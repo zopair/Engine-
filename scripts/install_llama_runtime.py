@@ -46,7 +46,7 @@ def validate_archive_members(members: list[tarfile.TarInfo]) -> list[tarfile.Tar
         elif member.islnk():
             link = PurePosixPath(member.linkname)
             target = posixpath.normpath(member.linkname)
-            if link.is_absolute() or "\\" in member.linkname:
+            if link.is_absolute() or ".." in link.parts or target.startswith("../") or "\\" in member.linkname:
                 raise RuntimeError(f"unsafe hard link: {member.name!r} -> {member.linkname!r}")
             hardlinks.append((name, target))
         elif not (member.isdir() or member.isfile()):
