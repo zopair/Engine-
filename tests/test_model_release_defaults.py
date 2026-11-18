@@ -3,7 +3,10 @@ from scripts.provision_model import DEFAULT_MODEL_URL, DEFAULT_MODEL_PATH, parse
 import pytest
 
 
-def test_default_model_release_is_internal_and_checksum_is_discovered_from_release():
+def test_default_model_release_is_internal_and_checksum_is_discovered_from_release(monkeypatch):
+    monkeypatch.delenv("ENGINE_MODEL_PATH", raising=False)
+    monkeypatch.delenv("ENGINE_MODEL_RELEASE_URL", raising=False)
+    monkeypatch.delenv("ENGINE_MODEL_SHA256", raising=False)
     settings = EngineConfig.from_env()
     assert settings.model_release_url == DEFAULT_MODEL_URL
     assert settings.model_release_url.endswith("/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf")

@@ -102,7 +102,7 @@ class LocalEngine:
             "--threads", str(self.settings.model_threads),
             "--ctx-size", str(self.settings.model_context),
             "--temp", str(self.settings.temperature),
-            "--no-display-prompt", "--simple-io", "--no-warmup", "--no-conversation",
+            "--no-display-prompt", "--simple-io", "--no-warmup",
         ]
         try:
             result = subprocess.run(
