@@ -25,7 +25,7 @@ a{color:#9edcc4;text-decoration:none}a:hover{text-decoration:underline}.status{f
 <article class="panel"><div class="muted">Open TASK issues</div><div class="metric" id="openTasks">—</div></article>
 <article class="panel"><div class="muted">Recently completed TASKs</div><div class="metric" id="closedTasks">—</div></article>
 <article class="panel"><div class="muted">Latest runner status</div><div class="metric" id="runnerStatus">—</div></article>
-<article class="panel"><div class="muted">Latest runner duration</div><div class="metric" id="runnerDuration">—</div></article>
+<article class="panel"><div class="muted">Latest runner duration</div><div class="metric" id="runnerDuration">—</div></article><article class="panel"><div class="muted">Recent run success rate</div><div class="metric" id="successRate">—</div></article>
 </section>
 <section class="panel section"><h2>Submit a new task</h2><form id="taskForm"><label for="title">Task title</label><input id="title" maxlength="120" required placeholder="e.g. Review the provider metrics"><label for="body">Instructions</label><textarea id="body" maxlength="8000" required placeholder="Describe the task and expected result…"></textarea><button id="submit" type="submit">Create [TASK] Issue</button><p class="status">Opens GitHub's issue form. Sign in and submit there; no access token is stored in this page.</p></form></section>
 <section class="panel section"><h2>Recently closed tasks</h2><ul id="closedList"><li class="muted">Loading…</li></ul></section>
@@ -51,7 +51,7 @@ async function refresh(){
   const done=tasks(closed), active=tasks(open), latest=runs.workflow_runs?.[0];
   $("openTasks").textContent=active.length;$("closedTasks").textContent=done.length;
   $("runnerStatus").textContent=latest?.conclusion||latest?.status||"No runs";
-  $("runnerDuration").textContent=latest?.run_started_at?duration(new Date(latest.updated_at)-new Date(latest.run_started_at)):"—";
+  $("runnerDuration").textContent=latest?.run_started_at?duration(new Date(latest.updated_at)-new Date(latest.run_started_at)):"—";\n  const completed=(runs.workflow_runs||[]).filter(x=>x.status==="completed");\n  $("successRate").textContent=completed.length?Math.round(100*completed.filter(x=>x.conclusion==="success").length/completed.length)+"%":"—";
   $("connection").textContent="GitHub API connected";
   $("closedList").innerHTML=done.slice(0,8).map(x=>`<li><a rel="noopener" target="_blank" href="${escapeText(x.html_url)}">${escapeText(x.title)}</a><span class="status">${escapeText(new Date(x.closed_at).toLocaleDateString())}</span></li>`).join("")||'<li class="muted">No closed tasks found.</li>';
   $("runList").innerHTML=(runs.workflow_runs||[]).map(x=>`<li><span>${escapeText(x.name)} · ${escapeText(x.event)}</span><a rel="noopener" target="_blank" href="${escapeText(x.html_url)}">${escapeText(x.conclusion||x.status)}</a></li>`).join("")||'<li class="muted">No workflow runs found.</li>';
