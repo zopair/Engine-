@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-audit:
-    name: Tests, licenses and dependency security
+  test-and-license:
+    name: Tests and strict license allowlist
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
@@ -43,8 +43,8 @@ jobs:
           restore-keys: |
             engine-models-${{ runner.os }}-
 
-      - name: Install minimal test tooling
-        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Install pinned test packages without undeclared extras
+        run: python -m pip install --disable-pip-version-check --no-deps -r requirements-dev.txt
 
       - name: Compile source
         run: python -m compileall -q cli.py core memory agents tools
@@ -55,7 +55,17 @@ jobs:
       - name: License allowlist
         run: python scripts/check_licenses.py
 
-      - name: Dependency vulnerability audit
-        run: |
-          python -m pip install --disable-pip-version-check pip-audit
-          pip-audit -r requirements-dev.txt
+  dependency-review:
+    name: Dependency vulnerabilities and license policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: low
+          license-check: true
+          allow-licenses: MIT, Apache-2.0, BSD-3-Clause
