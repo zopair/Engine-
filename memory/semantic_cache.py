@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import struct
 from dataclasses import dataclass
 from typing import Any
-
-import numpy as np
 
 from core.config import settings
 from memory.database import Database, database
@@ -24,7 +23,7 @@ class CacheHit:
 
 
 class SemanticCache:
-    """Persistent namespaced semantic cache backed by FAISS CPU and local embeddings."""
+    """Persistent namespaced semantic cache using a local CPU embedding encoder."""
 
     def __init__(
         self,
@@ -41,10 +40,7 @@ class SemanticCache:
         self.namespace = namespace
         self.embedder = embedder or self._build_embedder()
         self.dimension = int(self.embedder.dimension)
-        self.threshold = (
-            settings.semantic_similarity_threshold
-            if similarity_threshold is None else float(similarity_threshold)
-        )
+        self.threshold = settings.semantic_similarity_threshold if similarity_threshold is None else float(similarity_threshold)
         if not 0.0 <= self.threshold <= 1.0:
             raise ValueError("similarity threshold must be between 0 and 1")
         self.max_entries = max(1, int(max_entries))
@@ -71,28 +67,26 @@ class SemanticCache:
                    ORDER BY updated_at DESC LIMIT ?""",
                 (self.namespace, self.max_entries),
             ).fetchall()
-        items: list[CacheHit] = []
-        vectors: list[np.ndarray] = []
+        items, vectors = [], []
         for row in rows:
             if int(row["embedding_dim"]) != self.dimension:
                 continue
-            vector = np.frombuffer(row["embedding"], dtype=np.float32)
-            if vector.size != self.dimension:
-                continue
             try:
+                vector = struct.unpack(f"{self.dimension}f", row["embedding"])
                 metadata = json.loads(row["metadata_json"] or "{}")
-            except (TypeError, json.JSONDecodeError):
-                metadata = {}
-            vectors.append(vector.copy())
+            except (ValueError, TypeError, struct.error, json.JSONDecodeError):
+                continue
+            vectors.append(vector)
             items.append(CacheHit(row["question"], row["answer"], 0.0, metadata))
         self._items = items
-        self.index.reset(np.stack(vectors) if vectors else np.empty((0, self.dimension), np.float32))
+        self.index.reset(vectors)
 
     def put(self, question: str, answer: str, metadata: dict[str, Any] | None = None) -> None:
         question, answer = question.strip(), answer.strip()
         if not question or not answer:
             raise ValueError("question and answer must not be empty")
-        vector = self.embedder.encode(question)[0]
+        vector = self.embedder.encode(question)
+        blob = struct.pack(f"{self.dimension}f", *vector)
         encoded_metadata = json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True)
         with self.database.connect() as connection:
             connection.execute(
@@ -103,7 +97,7 @@ class SemanticCache:
                    answer=excluded.answer, embedding=excluded.embedding,
                    embedding_dim=excluded.embedding_dim, metadata_json=excluded.metadata_json,
                    updated_at=strftime('%s','now')""",
-                (self.namespace, question, answer, vector.tobytes(), self.dimension, encoded_metadata),
+                (self.namespace, question, answer, blob, self.dimension, encoded_metadata),
             )
             connection.execute(
                 """DELETE FROM semantic_cache_entries WHERE namespace=? AND id NOT IN
@@ -117,11 +111,11 @@ class SemanticCache:
         if not question.strip() or not self._items:
             return None
         scores, indices = self.index.search(self.embedder.encode(question), 1)
-        if indices.size == 0:
+        if not indices:
             return None
-        position, score = int(indices[0][0]), float(scores[0][0])
+        position, score = indices[0], scores[0]
         minimum = self.threshold if threshold is None else float(threshold)
-        if position < 0 or score < minimum:
+        if score < minimum:
             return None
         item = self._items[position]
         return CacheHit(item.question, item.answer, score, item.metadata)
@@ -132,7 +126,5 @@ class SemanticCache:
 
     def clear(self) -> None:
         with self.database.connect() as connection:
-            connection.execute(
-                "DELETE FROM semantic_cache_entries WHERE namespace=?", (self.namespace,)
-            )
+            connection.execute("DELETE FROM semantic_cache_entries WHERE namespace=?", (self.namespace,))
         self._load()

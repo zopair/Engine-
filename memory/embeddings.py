@@ -1,17 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import unicodedata
 from pathlib import Path
-
-import numpy as np
-
-try:
-    import faiss
-except ImportError:
-    faiss = None
-
+from typing import Iterable
 
 _STOP = {
     "a", "an", "and", "are", "do", "does", "for", "how", "i", "in", "is",
@@ -33,17 +27,17 @@ def _normalize(text: str) -> str:
 
 
 class CpuHashEmbeddingModel:
-    """Deterministic CPU feature-embedding model; no network or model download."""
+    """Deterministic, multilingual-ish CPU feature embeddings with no model downloads."""
 
     def __init__(self, dimension: int = 384) -> None:
         if dimension < 32:
             raise ValueError("embedding dimension must be at least 32")
         self.dimension = dimension
 
-    def encode(self, text: str) -> np.ndarray:
+    def encode(self, text: str) -> tuple[float, ...]:
         if not isinstance(text, str):
             raise TypeError("embedding input must be text")
-        vector = np.zeros(self.dimension, dtype=np.float32)
+        vector = [0.0] * self.dimension
         tokens = [_SYNONYMS.get(token, token) for token in re.findall(r"\w+", _normalize(text))]
         tokens = [token for token in tokens if token and token not in _STOP]
         features: list[tuple[str, float]] = [(token, 2.0) for token in tokens]
@@ -57,22 +51,23 @@ class CpuHashEmbeddingModel:
                         for i in range(max(0, len(padded) - width + 1))
                     )
         for feature, weight in features:
-            digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8, person=b"ENGINEv1").digest()
+            digest = hashlib.blake2b(
+                feature.encode("utf-8"), digest_size=8, person=b"ENGINEv1"
+            ).digest()
             index = int.from_bytes(digest[:4], "little") % self.dimension
             sign = 1.0 if digest[4] & 1 else -1.0
             vector[index] += sign * weight
-        norm = float(np.linalg.norm(vector))
+        norm = math.sqrt(sum(value * value for value in vector))
         if norm:
-            vector /= norm
-        return np.ascontiguousarray(vector.reshape(1, -1), dtype=np.float32)
+            vector = [value / norm for value in vector]
+        return tuple(vector)
 
 
 class OnnxEmbeddingModel:
-    """Optional local ONNX encoder. Model and tokenizer files must already exist locally."""
+    """Optional local ONNX encoder; model and tokenizer must already exist on disk."""
 
     def __init__(self, model_path: str, tokenizer_path: str, threads: int = 2) -> None:
-        model, tokenizer = Path(model_path), Path(tokenizer_path)
-        if not model.is_file() or not tokenizer.is_file():
+        if not Path(model_path).is_file() or not Path(tokenizer_path).is_file():
             raise FileNotFoundError("local ONNX model and tokenizer files are required")
         import onnxruntime as ort
         from tokenizers import Tokenizer
@@ -82,15 +77,17 @@ class OnnxEmbeddingModel:
         options.inter_op_num_threads = 1
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.session = ort.InferenceSession(
-            str(model), sess_options=options, providers=["CPUExecutionProvider"]
+            model_path, sess_options=options, providers=["CPUExecutionProvider"]
         )
-        self.tokenizer = Tokenizer.from_file(str(tokenizer))
+        self.tokenizer = Tokenizer.from_file(tokenizer_path)
         self.tokenizer.enable_truncation(max_length=128)
         self.tokenizer.enable_padding(length=128)
         self.input_names = {item.name for item in self.session.get_inputs()}
         self.dimension = 384
 
-    def encode(self, text: str) -> np.ndarray:
+    def encode(self, text: str) -> tuple[float, ...]:
+        import numpy as np
+
         encoded = self.tokenizer.encode(text)
         attention = np.asarray([encoded.attention_mask], dtype=np.int64)
         available = {
@@ -106,39 +103,42 @@ class OnnxEmbeddingModel:
         if output.ndim != 2:
             raise ValueError("ONNX model must return a 2D or 3D embedding tensor")
         self.dimension = int(output.shape[1])
-        output /= np.maximum(np.linalg.norm(output, axis=1, keepdims=True), 1e-12)
-        return np.ascontiguousarray(output, dtype=np.float32)
+        vector = output[0]
+        norm = float(np.linalg.norm(vector))
+        if norm:
+            vector = vector / norm
+        return tuple(float(value) for value in vector)
 
 
 class VectorIndex:
-    """FAISS inner-product index with a deterministic NumPy fallback for tests/minimal installs."""
+    """Bounded exact cosine/IP index implemented with Python floats and no native deps."""
 
     def __init__(self, dimension: int) -> None:
         self.dimension = dimension
-        self._vectors = np.empty((0, dimension), dtype=np.float32)
-        self._index = faiss.IndexFlatIP(dimension) if faiss is not None else None
+        self._vectors: list[tuple[float, ...]] = []
 
-    def reset(self, vectors: np.ndarray) -> None:
-        matrix = np.ascontiguousarray(vectors, dtype=np.float32).reshape(-1, self.dimension)
+    def reset(self, vectors: Iterable[Iterable[float]]) -> None:
+        matrix = [tuple(float(value) for value in row) for row in vectors]
+        if any(len(row) != self.dimension for row in matrix):
+            raise ValueError("vector dimension mismatch")
         self._vectors = matrix
-        if self._index is not None:
-            self._index = faiss.IndexFlatIP(self.dimension)
-            if len(matrix):
-                self._index.add(matrix)
 
-    def add(self, vectors: np.ndarray) -> None:
-        matrix = np.ascontiguousarray(vectors, dtype=np.float32).reshape(-1, self.dimension)
-        self._vectors = np.vstack((self._vectors, matrix))
-        if self._index is not None:
-            self._index.add(matrix)
+    def add(self, vectors: Iterable[Iterable[float]]) -> None:
+        for row in vectors:
+            vector = tuple(float(value) for value in row)
+            if len(vector) != self.dimension:
+                raise ValueError("vector dimension mismatch")
+            self._vectors.append(vector)
 
-    def search(self, query: np.ndarray, limit: int) -> tuple[np.ndarray, np.ndarray]:
-        if not len(self._vectors) or limit <= 0:
-            return np.empty((1, 0), np.float32), np.empty((1, 0), np.int64)
-        count = min(limit, len(self._vectors))
-        query = np.ascontiguousarray(query, dtype=np.float32).reshape(1, self.dimension)
-        if self._index is not None:
-            return self._index.search(query, count)
-        scores = self._vectors @ query[0]
-        indices = np.argsort(-scores)[:count]
-        return scores[indices].reshape(1, -1), indices.astype(np.int64).reshape(1, -1)
+    def search(self, query: Iterable[float], limit: int) -> tuple[list[float], list[int]]:
+        vector = tuple(float(value) for value in query)
+        if len(vector) != self.dimension:
+            raise ValueError("query dimension mismatch")
+        if limit <= 0 or not self._vectors:
+            return [], []
+        scored = (
+            (sum(left * right for left, right in zip(candidate, vector)), index)
+            for index, candidate in enumerate(self._vectors)
+        )
+        top = sorted(scored, key=lambda item: (-item[0], item[1]))[:limit]
+        return [score for score, _ in top], [index for _, index in top]

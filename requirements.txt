@@ -1,6 +1,4 @@
-# CPU-only vector retrieval and SQLite-backed encrypted state sync.
-# FAISS is MIT; its Linux wheel bundles OpenBLAS (BSD-3-Clause).
-# NumPy is BSD-3-Clause; packaging is Apache-2.0.
-faiss-cpu==1.16.0
-numpy==2.3.2
-packaging==26.3
+# No runtime third-party package is admitted until its full binary and transitive
+# license inventory passes MIT / Apache-2.0 / BSD-3-Clause.
+# FAISS is currently gated: the tested NumPy wheel bundles LGPL libquadmath.
+# The default CPU vector index uses the Python standard library.

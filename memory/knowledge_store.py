@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import struct
 from dataclasses import dataclass
 from typing import Any
-
-import numpy as np
 
 from memory.database import Database, database
 from memory.embeddings import CpuHashEmbeddingModel, VectorIndex
@@ -27,15 +26,10 @@ class KnowledgeResult(KnowledgeDocument):
 
 
 class KnowledgeStore:
-    """SQLite-backed repository knowledge with CPU vector retrieval."""
+    """SQLite-backed repository knowledge with bounded CPU vector retrieval."""
 
-    def __init__(
-        self,
-        database: Database | None = None,
-        namespace: str = "default",
-        embedder: Any | None = None,
-        max_documents: int = 10000,
-    ) -> None:
+    def __init__(self, database: Database | None = None, namespace: str = "default",
+                 embedder: Any | None = None, max_documents: int = 10000) -> None:
         if not namespace.strip():
             raise ValueError("namespace must not be empty")
         self.database = database or globals()["database"]
@@ -59,34 +53,28 @@ class KnowledgeStore:
         for row in rows:
             if int(row["embedding_dim"]) != self.dimension:
                 continue
-            vector = np.frombuffer(row["embedding"], dtype=np.float32)
-            if vector.size != self.dimension:
-                continue
             try:
+                vector = struct.unpack(f"{self.dimension}f", row["embedding"])
                 metadata = json.loads(row["metadata_json"] or "{}")
-            except (TypeError, json.JSONDecodeError):
-                metadata = {}
+            except (ValueError, TypeError, struct.error, json.JSONDecodeError):
+                continue
             documents.append(KnowledgeDocument(
                 int(row["id"]), row["namespace"], row["source"],
                 row["title"], row["content"], metadata
             ))
-            vectors.append(vector.copy())
+            vectors.append(vector)
         self._documents = documents
-        self.index.reset(np.stack(vectors) if vectors else np.empty((0, self.dimension), np.float32))
+        self.index.reset(vectors)
 
-    def upsert(
-        self,
-        source: str,
-        content: str,
-        title: str = "",
-        metadata: dict[str, Any] | None = None,
-    ) -> int:
+    def upsert(self, source: str, content: str, title: str = "",
+               metadata: dict[str, Any] | None = None) -> int:
         source, content = source.strip(), content.strip()
         if not source or not content:
             raise ValueError("source and content must not be empty")
-        vector = self.embedder.encode(f"{title}\n{content}")[0]
+        vector = self.embedder.encode(f"{title}\n{content}")
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
         metadata_json = json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True)
+        blob = struct.pack(f"{self.dimension}f", *vector)
         with self.database.connect() as connection:
             connection.execute(
                 """INSERT INTO knowledge_items
@@ -96,7 +84,7 @@ class KnowledgeStore:
                    title=excluded.title, content=excluded.content, content_hash=excluded.content_hash,
                    metadata_json=excluded.metadata_json, embedding=excluded.embedding,
                    embedding_dim=excluded.embedding_dim, updated_at=strftime('%s','now')""",
-                (self.namespace, source, title, content, digest, metadata_json, vector.tobytes(), self.dimension),
+                (self.namespace, source, title, content, digest, metadata_json, blob, self.dimension),
             )
             row = connection.execute(
                 "SELECT id FROM knowledge_items WHERE namespace=? AND source=?",
@@ -124,16 +112,15 @@ class KnowledgeStore:
         if not query.strip() or not self._documents or limit <= 0:
             return []
         scores, indices = self.index.search(self.embedder.encode(query), limit)
-        results = []
-        for score, position in zip(scores[0], indices[0]):
-            if position < 0 or float(score) < threshold:
-                continue
-            item = self._documents[int(position)]
-            results.append(KnowledgeResult(
+        return [
+            KnowledgeResult(
                 item.id, item.namespace, item.source, item.title,
-                item.content, item.metadata, float(score)
-            ))
-        return results
+                item.content, item.metadata, score
+            )
+            for score, position in zip(scores, indices)
+            if score >= threshold
+            for item in [self._documents[position]]
+        ]
 
     def delete(self, item_id: int) -> bool:
         with self.database.connect() as connection:
