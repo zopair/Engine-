@@ -20,15 +20,21 @@ class ModelProvisionError(RuntimeError):
 
 def download_model(url: str, expected_sha256: str, destination: str | Path, opener=None) -> Path:
     parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "github.com" or "/releases/download/" not in parsed.path:
-        raise ModelProvisionError("Model source must be an HTTPS GitHub Releases asset")
+    if (parsed.scheme != "https" or parsed.hostname != "github.com" or parsed.username or parsed.password
+            or parsed.fragment or "/releases/download/" not in parsed.path):
+        raise ModelProvisionError("Model source must be an HTTPS GitHub Releases asset URL without credentials")
     if not re.fullmatch(r"[a-fA-F0-9]{64}", expected_sha256 or ""):
         raise ModelProvisionError("A pinned 64-character SHA-256 is mandatory")
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink():
+        raise ModelProvisionError("Model destination must not be a symbolic link")
     if target.is_file():
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        if digest.lower() == expected_sha256.lower():
+        existing_digest = hashlib.sha256()
+        with target.open("rb") as existing:
+            for chunk in iter(lambda: existing.read(1024 * 1024), b""):
+                existing_digest.update(chunk)
+        if existing_digest.hexdigest().lower() == expected_sha256.lower():
             return target
     request = urllib.request.Request(url, headers={"User-Agent": "ENGINE-model-provisioner/1.0"})
     opener = opener or urllib.request.urlopen
