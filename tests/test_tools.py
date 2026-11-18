@@ -25,7 +25,7 @@ def test_repo_tools_adds_issue_comment_using_scoped_repo():
     class Response:
         def __enter__(self): return self
         def __exit__(self, *args): return False
-        def read(self): return b'{"id":1}'
+        def read(self, size=-1): return b'{"id":1}'
     def opener(request, timeout=0):
         calls.append((request.method, request.full_url, json.loads(request.data)))
         return Response()
