@@ -121,7 +121,7 @@ zopair/Engine-/
 - **لم يُضف llama-cpp-python إلى requirements.txt:** الحزمة الرسمية تتطلب numpy ضمن اعتمادياتها الأساسية. مسار NumPy الثنائي الذي سبق تدقيقه يتضمن libquadmath بترخيص LGPL خارج قائمة تراخيص Runtime. فرض تثبيت الحزمة سيكسر سياسة التراخيص الحالية.
 - توفير GGUF يتم من GitHub Release داخلي `models-v1`. ينشئ `.github/workflows/provision_model.yml` الإصدار تلقائياً عند غيابه أو يدوياً، ويجلب Qwen2.5-0.5B-Instruct-GGUF من مستودع Qwen الرسمي عند مراجعة immutable commit، ويتحقق من بيانات Apache-2.0، وصيغة GGUF والحجم، ثم ينشر الملف وملف SHA-256. يرفض `scripts/provision_model.py` أي تنزيل نموذج ليس من HTTPS GitHub Release، ويطابق البصمة المنشورة، مع حد 700 MiB.
 - مصدر النموذج هو `Qwen/Qwen2.5-0.5B-Instruct-GGUF` الرسمي، وملف Q4_K_M حجمه المنشور نحو 491 MB ورخصته Apache-2.0. بعد نشره في `models-v1` يصبح رابط GitHub Release الداخلي هو الافتراضي؛ تُقرأ البصمة تلقائياً من ملف `.sha256` ما لم يحدد المشغل بصمة مخصصة. عند غياب النموذج وبوابة معتمدة في ENGINE_PUBLIC_PROVIDERS، يفشل الاستدلال برسالة واضحة.
-- tests/test_local_inference_integration.py اختبار حقيقي اختياري، و.github/workflows/local_inference_smoke.yml يشغله عند تمرير GitHub Release URL وSHA-256 لنموذج Apache-2.0. الاختبار لا يُعد ناجحاً لمجرد وجوده؛ يجب تشغيل الـ workflow ورؤية نجاحه على نموذج فعلي.
+- tests/test_local_inference_integration.py اختبار حقيقي، و.github/workflows/local_inference_smoke.yml يشغّل مجموعة pytest كاملة بعد نشر النموذج أو عند تغيّر مكونات الاستدلال. آخر تحقق فعلي على [GitHub Actions run `44345822027`](https://github.com/zopair/Engine-/actions/runs/44345822027) نجح على CPU بنتيجة `64 passed, 0 skipped` بعد تثبيت llama.cpp b12503 وتنزيل النموذج من الإصدار الداخلي والتحقق من SHA-256.
 
 ### 2) استمرارية الحالة دون Secret
 - عند وجود ENGINE_STATE_ENCRYPTION_KEY يظل مسار التشفير إلى فرع engine-state هو المسار الأول.
@@ -142,6 +142,8 @@ zopair/Engine-/
 - .github/workflows/pages.yml ينشر مجلد docs/ باستخدام GitHub Pages. يجب اختيار Settings → Pages → Build and deployment → Source: GitHub Actions مرة واحدة في إعدادات المستودع حتى يُسمح بالنشر.
 
 ### 5) حالة المرحلة الرابعة وحدود الادعاء
-- مكتمل في الفرع: Artifact backup/restore، self-evolution gated workflow، static control center، Pages deployment workflow، pinned llama.cpp CPU runtime، GitHub Release model provisioner، واختبار inference حقيقي اختياري.
-- التحقق النهائي المعلق: اكتمال workflow توريد النموذج إلى `models-v1` ثم نجاح `local_inference_smoke.yml` دون skip. لا يُعلن الاستدلال المحلي مثبتاً قبل نجاح هذا التشغيل الفعلي.
-- CI المعتاد يشغّل اختبارات الوحدات؛ اختبار النموذج الحقيقي يتخطى نفسه عندما لا يتوفر ملف النموذج ومسار llama-cli. يجب تشغيل اختبار التكامل الصريح قبل إعلان الاستدلال المحلي مثبتاً إنتاجياً.
+- مكتمل ومثبت: Artifact backup/restore، self-evolution gated workflow، static control center، Pages deployment workflow، pinned llama.cpp CPU runtime، نشر نموذج Qwen داخل GitHub Release `models-v1`، والاستدلال النصي الحقيقي على CPU.
+- مصدر النموذج المثبت: Qwen revision `9217f5db79a29953eb74d5343926648285ec7e67`، وحجم الملف `491,400,032` بايت، وبصمة SHA-256: `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`.
+- تحقق End-to-End: Actions run `44345822027` — `64 passed, 0 skipped`، مع نجاح تثبيت runtime، تنزيل النموذج من GitHub Release، مطابقة البصمة، وتنفيذ الاستدلال النصي الحقيقي.
+- يظل التشغيل المعتاد لـCI قادراً على تخطي اختبار النموذج عند غياب runtime/model في runner العادي؛ بوابة `local_inference_smoke.yml` هي الإثبات الكامل وتُشغّل تلقائياً عند تغيّر مكونات الاستدلال أو النموذج.
+- قبل استخدام المنصة مع بيانات حساسة، اضبط `ENGINE_STATE_ENCRYPTION_KEY`؛ وضع Artifact fallback لا يوفّر تشفيراً تطبيقياً. دورة self-evolution الكاملة (اقتراح تعديل ثم فتح PR) لم تُثبت بعد بتشغيل مستقل رغم توفر النموذج المحلي.
