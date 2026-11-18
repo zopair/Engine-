@@ -1,3 +1,6 @@
-# Core GitHub Actions runtime intentionally uses Python standard library only.
-# Optional model runtime is gated on a complete MIT/Apache-2.0/BSD-3-Clause
-# dependency and supply-chain audit before it is added to this file.
+# CPU-only vector retrieval and SQLite-backed encrypted state sync.
+# FAISS is MIT; its Linux wheel bundles OpenBLAS (BSD-3-Clause).
+# NumPy is BSD-3-Clause; packaging is Apache-2.0.
+faiss-cpu==1.16.0
+numpy==2.3.2
+packaging==26.3
