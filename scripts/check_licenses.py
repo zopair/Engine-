@@ -7,6 +7,8 @@ import sys
 from importlib.metadata import distributions
 
 ALLOWED = {"MIT", "Apache-2.0", "BSD-3-Clause"}
+# These are bootstrap tools preinstalled by the GitHub Python toolchain, not project dependencies.
+BOOTSTRAP_TOOLS = {"pip", "setuptools", "wheel"}
 
 
 def _spdx_atom(value: str) -> str | None:
@@ -54,6 +56,8 @@ def main() -> int:
     checked = 0
     for distribution in distributions():
         name = distribution.metadata.get("Name", "unknown")
+        if name.lower() in BOOTSTRAP_TOOLS:
+            continue
         license_name = license_for(distribution)
         checked += 1
         if not expression_is_approved(license_name):
