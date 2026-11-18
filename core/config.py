@@ -23,25 +23,25 @@ class EngineConfig:
     temperature: float
     max_memory_mb: int
     max_cpu_threads: int
-    database_path: str
-    huey_database_path: str
-    groq_api_key: str
-    groq_models: str
-    gemini_api_key: str
-    gemini_model: str
-    openrouter_api_key: str
-    openrouter_free_models: str
-    hf_token: str
-    searxng_url: str
-    crawl_timeout_seconds: float
-    mem0_enabled: bool
-    max_request_timeout: float
-    semantic_cache_enabled: bool
-    embedding_model: str
-    semantic_similarity_threshold: float
-    embedding_download_timeout: float
-    dspy_model: str
-    api_key: str
+    database_path: str = "./data/engine.db"
+    huey_database_path: str = "./data/huey.db"
+    groq_api_key: str = ""
+    groq_models: str = ""
+    gemini_api_key: str = ""
+    gemini_model: str = ""
+    openrouter_api_key: str = ""
+    openrouter_free_models: str = ""
+    hf_token: str = ""
+    searxng_url: str = ""
+    crawl_timeout_seconds: float = 15.0
+    mem0_enabled: bool = False
+    max_request_timeout: float = 30.0
+    semantic_cache_enabled: bool = False
+    embedding_model: str = ""
+    semantic_similarity_threshold: float = 0.92
+    embedding_download_timeout: float = 30.0
+    dspy_model: str = ""
+    api_key: str = ""
 
     @classmethod
     def from_env(cls) -> "EngineConfig":
@@ -50,6 +50,13 @@ class EngineConfig:
             temperature = float(os.getenv("ENGINE_TEMPERATURE", "0.2"))
         except ValueError:
             temperature = 0.2
+        try:
+            crawl_timeout = float(os.getenv("CRAWL_TIMEOUT_SECONDS", "15"))
+            request_timeout = float(os.getenv("ENGINE_REQUEST_TIMEOUT", "30"))
+            similarity = float(os.getenv("SEMANTIC_SIMILARITY_THRESHOLD", "0.92"))
+            embedding_timeout = float(os.getenv("EMBEDDING_DOWNLOAD_TIMEOUT", "30"))
+        except ValueError:
+            crawl_timeout, request_timeout, similarity, embedding_timeout = 15.0, 30.0, 0.92, 30.0
         return cls(
             model_path=os.getenv("ENGINE_MODEL_PATH", "").strip(),
             model_context=_int_env("ENGINE_CONTEXT", 2048),
@@ -69,13 +76,13 @@ class EngineConfig:
             openrouter_free_models=os.getenv("OPENROUTER_FREE_MODELS", ""),
             hf_token=os.getenv("HF_TOKEN", ""),
             searxng_url=os.getenv("SEARXNG_URL", ""),
-            crawl_timeout_seconds=float(os.getenv("CRAWL_TIMEOUT_SECONDS", "15")),
+            crawl_timeout_seconds=crawl_timeout,
             mem0_enabled=os.getenv("MEM0_ENABLED", "false").lower() == "true",
-            max_request_timeout=float(os.getenv("ENGINE_REQUEST_TIMEOUT", "30")),
+            max_request_timeout=request_timeout,
             semantic_cache_enabled=os.getenv("SEMANTIC_CACHE_ENABLED", "false").lower() == "true",
             embedding_model=os.getenv("EMBEDDING_MODEL", ""),
-            semantic_similarity_threshold=float(os.getenv("SEMANTIC_SIMILARITY_THRESHOLD", "0.92")),
-            embedding_download_timeout=float(os.getenv("EMBEDDING_DOWNLOAD_TIMEOUT", "30")),
+            semantic_similarity_threshold=similarity,
+            embedding_download_timeout=embedding_timeout,
             dspy_model=os.getenv("DSPY_MODEL", ""),
             api_key=os.getenv("ENGINE_API_KEY", ""),
         )
