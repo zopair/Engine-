@@ -66,7 +66,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run_id=$(gh run list --workflow engine_runner.yml --status success --limit 10 --json databaseId --jq '.[0].databaseId // empty')
+          run_id=$(gh run list --workflow engine_runner.yml --branch main --status success --limit 10 --json databaseId --jq '.[0].databaseId // empty')
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
       - name: Restore previous SQLite artifact
         if: env.ENGINE_STATE_ENCRYPTION_KEY == '' && steps.previous.outputs.run_id != ''
