@@ -1,6 +1,10 @@
 name: ENGINE Local Inference Smoke Test
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/local_inference_smoke.yml"
   workflow_dispatch:
     inputs:
       model_release_url:
