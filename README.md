@@ -20,6 +20,16 @@
 
 ---
 
+## 1.1 الذاكرة واستمرارية الحالة (Encrypted State Persistence)
+
+- تُحفظ جلسات SQLite بين تشغيلات GitHub Actions عبر الفرع المنفصل `engine-state` باستخدام `scripts/sync_state.py restore|save`.
+- يجب ضبط `ENGINE_STATE_ENCRYPTION_KEY` كسِرّ GitHub بطول لا يقل عن 32 بايت، مع صلاحية `contents: write` للـ workflow الذي ينفذ الحفظ. لا تُكتب المفاتيح في المستودع أو السجلات.
+- تُشفّر لقطة SQLite محلياً قبل رفعها (AES-256-CBC مع HMAC للتحقق من سلامة البيانات). لا يُرفع ملف قاعدة البيانات بصورته الصريحة.
+- يجب تنفيذ `restore` قبل تشغيل الوكلاء و`save` بعد اكتمال المهمة، مع عدم تفعيل حفظ متزامن على الفرع نفسه من أكثر من تشغيل.
+- الفهرسة الافتراضية تستخدم تضمين CPU محلياً بلا تنزيل نموذج أو اعتماديات ثنائية. يمكن تفعيل ONNX فقط عند توفير نموذج ومجزئ محليين بعد فحص تراخيص كل الاعتماديات. لم يُعتمد FAISS حالياً لأن عجلات NumPy الثنائية التي فُحصت تضم مكوّناً بترخيص LGPL خارج قائمة تراخيص التشغيل.
+
+---
+
 ## 2. المعمارية الهندسية المعتمدة (Modular GitHub-Native Architecture)
 
 ```text
@@ -37,9 +47,11 @@ zopair/Engine-/
 │   └── resource_optimizer.py       # مراقبة استهلاك الموارد وتسريع الإقلاع المؤقت (Ephemeral Optimization)
 ├── memory/
 │   ├── __init__.py
-│   ├── database.py                 # قاعدة بيانات SQLite خفيفة تُحفظ وتُحدّث كـ Artifact أو داخل فرع البيانات
-│   ├── semantic_cache.py           # الكاش الدلالي السريع (FAISS-CPU + ONNX Embeddings)
-│   └── knowledge_store.py          # استرجاع المعرفة والسياق من ملفات المستودع (JSON/Markdown)
+│   ├── database.py                 # SQLite WAL للذاكرة والمعرفة ونقاط استئناف المسارات
+│   ├── embeddings.py               # تضمين CPU حتمي بلا تنزيلات؛ ONNX محلي اختياري بعد تدقيق الاعتمادات
+│   ├── semantic_cache.py           # كاش دلالي مع فهرسة cosine CPU؛ FAISS مؤجل لحين اجتياز تدقيق التراخيص الثنائية
+│   ├── knowledge_store.py          # مخزن معرفة واسترجاع دلالي محلي
+│   └── state_store.py              # نسخ SQLite مشفرة واستعادتها من فرع GitHub مخصص
 ├── factories/
 │   ├── __init__.py
 │   ├── agent_factory.py            # إنشاء وتكوين واختبار الوكلاء الذكيين ديناميكياً
