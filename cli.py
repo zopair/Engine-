@@ -1,45 +1,66 @@
-"""Unified command-line entry point for GitHub Actions and local diagnostics."""
-
+"""Unified CLI for provider-routed inference and scheduled maintenance."""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+import time
 
 from core.config import config
-from core.local_engine import LocalEngine, LocalEngineError
+from core.provider_orchestrator import ProviderOrchestrator, ProviderError
+from core.local_engine import LocalEngine
 from core.resource_optimizer import apply_thread_limits, as_dict
+from memory.database import Database
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="engine", description="GitHub-native autonomous engine")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("doctor", help="check runner limits and local inference readiness")
-    run = commands.add_parser("run", help="run one prompt using a cached local GGUF model")
+    commands.add_parser("doctor", help="check runner limits and inference provider readiness")
+    run = commands.add_parser("run", help="run a task through the provider orchestrator")
     run.add_argument("prompt", help="prompt text")
     run.add_argument("--max-tokens", type=int, default=None)
+    run.add_argument("--request-id", default=None)
+    commands.add_parser("maintenance", help="initialize and compact persistent engine state")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     apply_thread_limits()
+    if args.command == "maintenance":
+        database = Database(__import__("os").getenv("ENGINE_DATABASE_PATH", config.database_path))
+        database.initialize()
+        ProviderOrchestrator(database=database, providers=[])
+        with database.connect() as connection:
+            connection.execute("DELETE FROM provider_requests WHERE created_at < ?", (time.time() - 30 * 86400,))
+            connection.execute("PRAGMA optimize")
+        print(json.dumps({"status": "maintenance_complete", "database": str(database.path)}))
+        return 0
     if args.command == "doctor":
         engine = LocalEngine()
+        orchestrator = ProviderOrchestrator()
+        providers = [{"name": provider.name, "healthy": orchestrator._health_for(provider).healthy,
+                      "latency_ms": orchestrator._health_for(provider).latency_ms}
+                     for provider in orchestrator.providers]
+        local_ready = engine.is_ready() and engine.runtime_installed()
+        ready = local_ready or any(item["healthy"] for item in providers)
         report = {
-            "status": "ready" if engine.is_ready() and engine.runtime_installed() else "degraded",
+            "status": "ready" if ready else "degraded",
             "model_configured": bool(config.model_path),
             "model_file_exists": engine.is_ready(),
             "llama_cpp_installed": engine.runtime_installed(),
+            "providers": providers,
             "gpu_layers": 0,
             "resources": as_dict(),
         }
         print(json.dumps(report, indent=2))
-        return 0 if report["status"] == "ready" else 2
-
+        return 0 if ready else 2
     try:
-        answer = LocalEngine().complete(args.prompt, max_tokens=args.max_tokens)
-    except (LocalEngineError, ValueError) as exc:
+        answer = ProviderOrchestrator().complete(
+            args.prompt, max_tokens=args.max_tokens, request_id=args.request_id
+        )
+    except (ProviderError, ValueError) as exc:
         print(f"engine: {exc}", file=sys.stderr)
         return 2
     print(answer)
