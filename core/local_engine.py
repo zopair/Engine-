@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.config import EngineConfig, config
+from core.resource_optimizer import snapshot
 
 
 class LocalEngineError(RuntimeError):
@@ -30,7 +31,23 @@ class LocalEngine:
         return importlib.util.find_spec("llama_cpp") is not None
 
     def is_ready(self) -> bool:
-        return bool(self.settings.model_path and Path(self.settings.model_path).is_file())
+        return bool(self.settings.model_path and Path(self.settings.model_path).expanduser().is_file())
+
+    def _check_resource_budget(self, model_path: Path) -> None:
+        model_size_mb = model_path.stat().st_size / (1024 * 1024)
+        available = snapshot(self.settings).memory_available_mb
+        # Reserve 1 GiB for Python, runtime libraries, KV cache and the Actions runner.
+        required_mb = model_size_mb + 1024
+        if required_mb > self.settings.max_memory_mb:
+            raise LocalEngineError(
+                f"Model requires approximately {required_mb:.0f} MB including reserve; "
+                f"configured limit is {self.settings.max_memory_mb} MB."
+            )
+        if available is not None and required_mb > available:
+            raise LocalEngineError(
+                f"Insufficient available memory: approximately {available} MB available, "
+                f"{required_mb:.0f} MB required including reserve."
+            )
 
     def _load(self) -> Any:
         if self._model is not None:
@@ -43,6 +60,7 @@ class LocalEngine:
                 raise LocalEngineError(
                     "GGUF model not found. Set ENGINE_MODEL_PATH to a cached model file."
                 )
+            self._check_resource_budget(model_path)
             factory = self._factory
             if factory is None:
                 try:
