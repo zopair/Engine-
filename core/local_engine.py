@@ -38,7 +38,7 @@ class LocalEngine:
 
     @staticmethod
     def runtime_installed() -> bool:
-        return importlib.util.find_spec("llama_cpp") is not None or LocalEngine.cli_path() is not None
+        return bool(importlib.util.find_spec("llama_cpp") is not None or LocalEngine.cli_path() is not None)
 
     def is_ready(self) -> bool:
         return bool(self.settings.model_path and Path(self.settings.model_path).expanduser().is_file())
