@@ -12,12 +12,14 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=30.0, check_same_thread=False)
+        connection = sqlite3.connect(
+            str(self.path), timeout=5.0, check_same_thread=False
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL;")
         connection.execute("PRAGMA synchronous=NORMAL;")
         connection.execute("PRAGMA foreign_keys=ON;")
-        connection.execute("PRAGMA busy_timeout=30000;")
+        connection.execute("PRAGMA busy_timeout=5000;")
         connection.execute("PRAGMA temp_store=MEMORY;")
         connection.execute("PRAGMA cache_size=-8192;")
         return connection
@@ -32,25 +34,22 @@ class Database:
                     content TEXT NOT NULL,
                     created_at REAL NOT NULL DEFAULT (strftime('%s', 'now'))
                 );
-
                 CREATE TABLE IF NOT EXISTS user_facts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
-                    fact TEXT NOT NOT NULL,
+                    fact TEXT NOT NULL,
                     source TEXT,
                     created_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
                     updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
                     UNIQUE(user_id, fact)
                 );
-
                 CREATE TABLE IF NOT EXISTS semantic_cache_entries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    question TEXT NOT NULL,
+                    question TEXT NOT NULL UNIQUE,
                     answer TEXT NOT NULL,
-                    embedding BLOB,
+                    embedding BLOB NOT NULL,
                     created_at REAL NOT NULL DEFAULT (strftime('%s', 'now'))
                 );
-
                 CREATE INDEX IF NOT EXISTS idx_conversations_user_created
                     ON conversations(user_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_user_facts_user

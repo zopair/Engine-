@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     hf_token: str = ""
 
     searxng_url: str = "https://searx.be"
+    crawl_timeout_seconds: float = 25.0
+    hf_image_space: str = "black-forest-labs/FLUX.1-schnell"
+    hf_image_api_name: str = "/infer"
+    media_output_dir: str = "./data/generated"
+    whisper_model: str = "tiny"
+    whisper_cpu_threads: int = 2
+    piper_executable: str = "piper"
+    piper_model_path: str = "./models/en_US-lessac-medium.onnx"
+    piper_timeout_seconds: float = 30.0
+    mem0_enabled: bool = True
+
     r2_endpoint: str = ""
     r2_access_key: str = ""
     r2_secret_key: str = ""
@@ -35,8 +46,11 @@ class Settings(BaseSettings):
     max_context_messages: int = 12
 
     semantic_cache_enabled: bool = True
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "Xenova/all-MiniLM-L6-v2"
     semantic_similarity_threshold: float = 0.92
+    embedding_download_timeout: float = 60.0
+
+    dspy_model: str = ""
 
 
 settings = Settings()
