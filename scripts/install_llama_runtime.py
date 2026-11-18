@@ -1,0 +1,53 @@
+"""Install the pinned CPU-only llama.cpp GitHub Release binary."""
+from __future__ import annotations
+import argparse, hashlib, os, tarfile, tempfile, urllib.parse, urllib.request
+from pathlib import Path
+RUNTIME_URL = "https://github.com/ggml-org/llama.cpp/releases/download/b12503/llama-b12503-bin-ubuntu-x64.tar.gz"
+RUNTIME_SHA256 = "0d585f8a78ffdfdc4f6303a089aaa1379c15323b33483b6548c85c774a376a9d"
+MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+REDIRECT_HOSTS = {"github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
+
+def install(destination: str | Path) -> Path:
+    target = Path(destination).expanduser()
+    target.mkdir(parents=True, exist_ok=True)
+    for root, _, names in os.walk(target):
+        if "llama-cli" in names:
+            candidate = Path(root) / "llama-cli"
+            if os.access(candidate, os.X_OK): return candidate
+    fd, name = tempfile.mkstemp(prefix="llama-runtime-", suffix=".tar.gz")
+    os.close(fd); archive = Path(name)
+    try:
+        request = urllib.request.Request(RUNTIME_URL, headers={"User-Agent":"ENGINE-runtime-installer/1.0"})
+        digest, total = hashlib.sha256(), 0
+        with urllib.request.urlopen(request, timeout=60) as response, archive.open("wb") as output:
+            if urllib.parse.urlsplit(response.geturl()).hostname not in REDIRECT_HOSTS:
+                raise RuntimeError("llama.cpp release redirected to an untrusted host")
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk: break
+                total += len(chunk)
+                if total > MAX_ARCHIVE_BYTES: raise RuntimeError("llama.cpp runtime archive exceeds 100 MiB")
+                digest.update(chunk); output.write(chunk)
+        if digest.hexdigest() != RUNTIME_SHA256: raise RuntimeError("llama.cpp runtime SHA-256 mismatch")
+        with tarfile.open(archive, "r:gz") as bundle:
+            members = bundle.getmembers()
+            for member in members:
+                path = Path(member.name)
+                if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk() or member.isdev():
+                    raise RuntimeError("unsafe path or link in llama.cpp release archive")
+            bundle.extractall(target, members=members)
+        cli = next((Path(root)/"llama-cli" for root,_,names in os.walk(target) if "llama-cli" in names),None)
+        if cli is None or not cli.is_file(): raise RuntimeError("pinned archive does not contain llama-cli")
+        cli.chmod(cli.stat().st_mode | 0o111)
+        library_dirs = sorted({str(Path(root)) for root,_,names in os.walk(target) if any(n.endswith(".so") for n in names)})
+        with open(os.environ.get("GITHUB_ENV", os.devnull), "a", encoding="utf-8") as env:
+            env.write(f"ENGINE_LLAMA_CLI_PATH={cli}\n")
+            if library_dirs:
+                env.write("LD_LIBRARY_PATH=" + ":".join(library_dirs) + ":" + os.environ.get("LD_LIBRARY_PATH","") + "\n")
+        return cli
+    finally: archive.unlink(missing_ok=True)
+
+def main() -> int:
+    parser=argparse.ArgumentParser(description=__doc__); parser.add_argument("--destination",default="~/.cache/engine/llama.cpp")
+    args=parser.parse_args(); print(f"Installed checksum-verified CPU llama.cpp CLI: {install(args.destination)}"); return 0
+if __name__ == "__main__": raise SystemExit(main())
