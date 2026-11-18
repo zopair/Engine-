@@ -60,11 +60,11 @@ class _MarkdownParser(HTMLParser):
         elif not self.skip and tag in {"h1", "h2", "h3", "p", "div", "section", "article", "li"}:
             self.parts.append("\\n\\n")
     def handle_data(self, data):
-        if not self.skip and data.strip():
+        if not self.skip and data:
             if self.pending:
                 self.parts.append(self.pending)
                 self.pending = ""
-            self.parts.append(data.strip() + " ")
+            self.parts.append(data)
 
 
 def html_to_markdown(source: str, max_chars: int = 20000) -> str:
