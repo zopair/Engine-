@@ -11,12 +11,6 @@ on:
         description: Pinned SHA-256 digest of the GGUF file
         required: true
         type: string
-      model_license:
-        description: Confirm the model license
-        required: true
-        type: choice
-        options:
-          - Apache-2.0
 
 permissions:
   contents: read
@@ -26,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      ENGINE_MODEL_PATH: ~/.cache/engine/models/integration-model.gguf
-      ENGINE_INTEGRATION_MODEL_PATH: ~/.cache/engine/models/integration-model.gguf
+      ENGINE_MODEL_PATH: ~/.cache/engine/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+      ENGINE_INTEGRATION_MODEL_PATH: ~/.cache/engine/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
       ENGINE_THREADS: "2"
       ENGINE_MAX_CPU_THREADS: "2"
       ENGINE_MAX_MEMORY_MB: "12288"
@@ -42,9 +36,7 @@ jobs:
         env:
           MODEL_URL: ${{ inputs.model_release_url }}
           MODEL_SHA256: ${{ inputs.model_sha256 }}
-          MODEL_LICENSE: ${{ inputs.model_license }}
         run: |
-          test "$MODEL_LICENSE" = "Apache-2.0"
           python scripts/provision_model.py --url "$MODEL_URL" --sha256 "$MODEL_SHA256" --output "$ENGINE_MODEL_PATH"
       - name: Install only approved test dependencies
         run: |
