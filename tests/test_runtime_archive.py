@@ -40,3 +40,9 @@ def test_runtime_archive_rejects_special_device_members():
     entries = [member("dev/device", tarfile.CHRTYPE)]
     with pytest.raises(RuntimeError, match="special archive member"):
         validate_archive_members(entries)
+
+
+def test_runtime_archive_rejects_windows_style_path_separators():
+    entries = [member("lib\\..\\outside", tarfile.REGTYPE)]
+    with pytest.raises(RuntimeError, match="path separator"):
+        validate_archive_members(entries)
