@@ -1,0 +1,101 @@
+name: ENGINE Runner
+
+on:
+  issues:
+    types: [opened, edited]
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Task to execute
+        required: true
+        type: string
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: engine-state-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: github.event_name != 'issues' || startsWith(github.event.issue.title, '[TASK]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      ENGINE_MODEL_PATH: ~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+      ENGINE_THREADS: "2"
+      ENGINE_MAX_CPU_THREADS: "2"
+      ENGINE_MAX_MEMORY_MB: "12288"
+      ENGINE_STATE_ENCRYPTION_KEY: ${{ secrets.ENGINE_STATE_ENCRYPTION_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore cached local GGUF model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/engine/models
+          key: engine-gguf-${{ runner.os }}-${{ hashFiles('models/*.sha256') }}
+          restore-keys: |
+            engine-gguf-${{ runner.os }}-
+      - name: Restore encrypted state
+        if: env.ENGINE_STATE_ENCRYPTION_KEY != ''
+        run: python scripts/sync_state.py restore
+      - name: Resolve task input
+        id: task
+        shell: bash
+        env:
+          DISPATCH_TASK: ${{ inputs.task }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8"))
+          name = os.environ["GITHUB_EVENT_NAME"]
+          if name == "issues":
+              issue = event["issue"]
+              title = issue.get("title", "")
+              if not title.startswith("[TASK]"):
+                  raise SystemExit("Issue title must begin with [TASK]")
+              task = (issue.get("body") or "").strip() or title[6:].strip()
+              print(f"issue_number={issue['number']}")
+              print(f"request_id=issue-{issue['number']}")
+          elif name == "workflow_dispatch":
+              task = os.environ.get("DISPATCH_TASK", "").strip()
+              print("issue_number=")
+              print(f"request_id=dispatch-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}")
+          else:
+              task = "__maintenance__"
+              print("issue_number=")
+              print(f"request_id=schedule-{os.environ['GITHUB_RUN_ID']}")
+          if not task:
+              raise SystemExit("Task input is empty")
+          task = task.replace("\r", " ").replace("\n", " ")
+          print("task=" + task)
+          PY
+      - name: Run maintenance or task
+        env:
+          TASK: ${{ steps.task.outputs.task }}
+          REQUEST_ID: ${{ steps.task.outputs.request_id }}
+        run: |
+          if [ "$TASK" = "__maintenance__" ]; then
+            python cli.py maintenance
+          else
+            python cli.py run "$TASK" --request-id "$REQUEST_ID" > /tmp/engine-result.txt
+            cat /tmp/engine-result.txt
+          fi
+      - name: Comment and close completed task issue
+        if: success() && steps.task.outputs.issue_number != ''
+        env:
+          ISSUE_NUMBER: ${{ steps.task.outputs.issue_number }}
+        run: python scripts/complete_issue.py --issue "$ISSUE_NUMBER" --result-file /tmp/engine-result.txt
+      - name: Persist encrypted state
+        if: success() && env.ENGINE_STATE_ENCRYPTION_KEY != ''
+        run: python scripts/sync_state.py save
