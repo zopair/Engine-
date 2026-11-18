@@ -1,31 +1,28 @@
-# syntax=docker/dockerfile:1
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PORT=7860 \
+    LOCAL_MODEL_PATH=/app/models/model.gguf
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl ca-certificates && rm -rf /var/lib/apt/lists/*
+    ca-certificates libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home appuser
 
 WORKDIR /app
-COPY requirements.txt .
-RUN python -m pip install --upgrade pip && python -m pip install --prefix=/install -r requirements.txt
+COPY requirements.txt ./
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
-FROM python:3.11-slim AS runtime
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=7860
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates libgomp1 && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /install /usr/local
-WORKDIR /app
 COPY . .
+RUN mkdir -p /app/data /app/models \
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/entrypoint.sh
 
-RUN chmod +x /app/entrypoint.sh && mkdir -p /app/data
-
+USER appuser
 EXPOSE 7860
+VOLUME ["/app/data", "/app/models"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health', timeout=3)"
 ENTRYPOINT ["/app/entrypoint.sh"]
