@@ -46,3 +46,23 @@ def test_runtime_archive_rejects_windows_style_path_separators():
     entries = [member("lib\\..\\outside", tarfile.REGTYPE)]
     with pytest.raises(RuntimeError, match="path separator"):
         validate_archive_members(entries)
+
+
+def test_runtime_archive_accepts_hard_links_to_internal_regular_files():
+    entries = [
+        member("lib/libggml.so.1", tarfile.REGTYPE),
+        member("lib/libggml.so", tarfile.LNKTYPE, "lib/libggml.so.1"),
+    ]
+    assert validate_archive_members(entries) == entries
+
+
+def test_runtime_archive_rejects_hard_links_outside_archive():
+    entries = [member("lib/escape", tarfile.LNKTYPE, "../../etc/passwd")]
+    with pytest.raises(RuntimeError, match="unsafe hard link"):
+        validate_archive_members(entries)
+
+
+def test_runtime_archive_rejects_hard_links_to_missing_files():
+    entries = [member("lib/missing", tarfile.LNKTYPE, "lib/not-present")]
+    with pytest.raises(RuntimeError, match="target is missing"):
+        validate_archive_members(entries)
