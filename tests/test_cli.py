@@ -16,8 +16,13 @@ class UnreadyEngine:
         return False
 
 
+class NoProviders:
+    providers = []
+
+
 def test_doctor_emits_machine_readable_report(capsys, monkeypatch):
     monkeypatch.setattr(cli, "LocalEngine", UnreadyEngine)
+    monkeypatch.setattr(cli, "ProviderOrchestrator", NoProviders)
     monkeypatch.setattr(cli, "config", replace(cli.config, model_path=""))
     result = cli.main(["doctor"])
     payload = json.loads(capsys.readouterr().out)
