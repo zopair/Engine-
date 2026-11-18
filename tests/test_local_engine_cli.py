@@ -13,7 +13,8 @@ def test_local_engine_executes_real_cli_boundary_without_numpy(tmp_path, monkeyp
     executable.write_text(
         "#!/usr/bin/env python3\n"
         "import sys\n"
-        "assert '--no-display-prompt' in sys.argv\n        assert '--no-conversation' not in sys.argv\n"
+        "assert '--no-display-prompt' in sys.argv\n"
+        "assert '--no-conversation' not in sys.argv\n"
         "assert '--model' in sys.argv and '--prompt' in sys.argv\n"
         "print('deterministic local model response')\n",
         encoding="utf-8",
