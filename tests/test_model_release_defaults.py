@@ -13,7 +13,7 @@ def test_default_model_release_is_internal_and_checksum_is_discovered_from_relea
 
 def test_checksum_sidecar_accepts_sha256sum_format():
     digest = "a" * 64
-    assert parse_checksum_sidecar(f"{digest}  qwen.gguf\\n", "qwen.gguf") == digest
+    assert parse_checksum_sidecar(f"{digest}  qwen.gguf\n", "qwen.gguf") == digest
 
 
 def test_checksum_sidecar_rejects_wrong_filename():
