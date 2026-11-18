@@ -58,7 +58,7 @@ jobs:
       - name: Install pinned CPU llama.cpp runtime
         run: python scripts/install_llama_runtime.py
       - name: Provision configured GitHub Release model
-        if: always()
+        if: success() && env.ENGINE_MODEL_RELEASE_URL != ''
         run: python scripts/provision_model.py
       - name: Find previous successful runner
         if: env.ENGINE_STATE_ENCRYPTION_KEY == ''
