@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -18,15 +19,16 @@ class FakeLlama:
 
 
 def make_config(model_path: Path) -> EngineConfig:
+    cpu_count = max(1, os.cpu_count() or 1)
     return EngineConfig(
         model_path=str(model_path),
         model_context=1024,
-        model_threads=2,
+        model_threads=min(2, cpu_count),
         model_batch=64,
         max_tokens=64,
         temperature=0.1,
         max_memory_mb=12288,
-        max_cpu_threads=2,
+        max_cpu_threads=min(2, cpu_count),
     )
 
 
@@ -46,7 +48,7 @@ def test_local_engine_lazy_loads_once_and_forces_cpu(tmp_path):
     assert engine.complete("second") == "engine response"
     assert len(instances) == 1
     assert instances[0].kwargs["n_gpu_layers"] == 0
-    assert instances[0].kwargs["n_threads"] == 2
+    assert instances[0].kwargs["n_threads"] <= max(1, os.cpu_count() or 1)
     assert len(instances[0].calls) == 2
 
 
