@@ -19,3 +19,13 @@ def test_checksum_sidecar_accepts_sha256sum_format():
 def test_checksum_sidecar_rejects_wrong_filename():
     with pytest.raises(ModelProvisionError):
         parse_checksum_sidecar(f"{'a' * 64}  other.gguf", "qwen.gguf")
+
+
+def test_custom_model_release_url_and_checksum_override_defaults(monkeypatch):
+    url = "https://github.com/example/engine/releases/download/v2/custom.gguf"
+    digest = "b" * 64
+    monkeypatch.setenv("ENGINE_MODEL_RELEASE_URL", url)
+    monkeypatch.setenv("ENGINE_MODEL_SHA256", digest)
+    settings = EngineConfig.from_env()
+    assert settings.model_release_url == url
+    assert settings.model_sha256 == digest
