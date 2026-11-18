@@ -1,11 +1,25 @@
 import json
+from dataclasses import replace
 
-from cli import main
+import cli
+
+
+class UnreadyEngine:
+    def __init__(self):
+        pass
+
+    def is_ready(self):
+        return False
+
+    @staticmethod
+    def runtime_installed():
+        return False
 
 
 def test_doctor_emits_machine_readable_report(capsys, monkeypatch):
-    monkeypatch.setenv("ENGINE_MODEL_PATH", "")
-    result = main(["doctor"])
+    monkeypatch.setattr(cli, "LocalEngine", UnreadyEngine)
+    monkeypatch.setattr(cli, "config", replace(cli.config, model_path=""))
+    result = cli.main(["doctor"])
     payload = json.loads(capsys.readouterr().out)
     assert result == 2
     assert payload["gpu_layers"] == 0
