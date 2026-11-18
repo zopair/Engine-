@@ -37,7 +37,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Restore cached model and CPU runtime\n        uses: actions/cache@v4\n        with:\n          path: |\n            ~/.cache/engine/models\n            ~/.cache/engine/llama.cpp\n          key: engine-evolution-runtime-b12503-${{ runner.os }}\n      - name: Install pinned CPU llama.cpp runtime\n        run: python scripts/install_llama_runtime.py\n      - name: Provision configured GitHub Release model\n        if: env.ENGINE_MODEL_RELEASE_URL != ''\n        run: python scripts/provision_model.py\n      - name: Restore last runner artifact when encryption is not configured
+      - name: Restore cached model and CPU runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/engine/models
+            ~/.cache/engine/llama.cpp
+          key: engine-evolution-runtime-b12503-${{ runner.os }}
+      - name: Install pinned CPU llama.cpp runtime
+        run: python scripts/install_llama_runtime.py
+      - name: Provision configured GitHub Release model
+        if: env.ENGINE_MODEL_RELEASE_URL != ''
+        run: python scripts/provision_model.py
+      - name: Restore last runner artifact when encryption is not configured
         if: env.ENGINE_STATE_ENCRYPTION_KEY == ''
         env:
           GH_TOKEN: ${{ github.token }}
