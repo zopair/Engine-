@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import os
 import time
+import ipaddress
+import socket
+import urllib.parse
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -43,8 +46,18 @@ class OpenAICompatibleProvider:
     """Opt-in HTTPS OpenAI-compatible endpoint; no provider is trusted by discovery alone."""
 
     def __init__(self, name: str, base_url: str, model: str, token: str = "", timeout: float = 12.0):
-        if not base_url.startswith("https://"):
-            raise ValueError("public provider endpoints must use HTTPS")
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("public provider endpoints must be credential-free HTTPS URLs")
+        host = parsed.hostname.lower()
+        if host == "localhost" or host.endswith((".localhost", ".local")):
+            raise ValueError("public provider endpoint cannot target a local host")
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        if address is not None and not address.is_global:
+            raise ValueError("public provider endpoint cannot target a non-public IP")
         self.name = name
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -60,7 +73,15 @@ class OpenAICompatibleProvider:
             headers["Authorization"] = "Bearer " + self.token
         request = urllib.request.Request(self.base_url + path, data=data, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            host = urllib.parse.urlsplit(self.base_url).hostname
+            addresses = {item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)}
+            if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+                raise ProviderError(f"{self.name}: endpoint resolves to a non-public address")
+            class _NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    return None
+            opener = urllib.request.build_opener(_NoRedirect())
+            with opener.open(request, timeout=self.timeout) as response:
                 return json.loads(response.read(2_000_001).decode("utf-8"))
         except (OSError, ValueError, urllib.error.URLError) as exc:
             raise ProviderError(f"{self.name}: provider request failed") from exc
