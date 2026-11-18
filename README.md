@@ -1,7 +1,7 @@
 # ENGINE — 100% GitHub-Native Autonomous Intelligence Platform (`zopair/Engine-`)
 
 > **⚠️ تنبيه ملزم لوكلاء البرمجة والمطورين (Strict Architectural Contract):**
-> هذا المستند هو **المرجع الهندسي الوحيد المعتمد (Single Source of Truth)** للمشروع. يعمل هذا المحرك **بالكامل داخل بنية GitHub (GitHub Actions + GitHub API + GitHub Pages)** بدون أي استضافات خارجية (لا Hugging Face، لا Render، لا خوادم خارجية مدفوعة). يُمنع الخروج عن هذه المعمارية أو إضافة اعتماديات ثقيلة.
+> هذا المستند هو **المرجع الهندسي الوحيد المعتمد (Single Source of Truth)** للمشروع. يعمل التشغيل والتنفيذ **داخل بنية GitHub (GitHub Actions + GitHub API + GitHub Pages)** دون استضافة خارجية دائمة. يُسمح باستثناء توريد النموذج لمرة واحدة من مستودع Qwen الرسمي على Hugging Face، بعد التحقق من رخصة Apache-2.0 وتثبيت مراجعة المصدر، ثم يُعاد استضافته كـ GitHub Release داخلي؛ لا تُستخدم HF Spaces أو خوادم استدلال خارجية. يُمنع الخروج عن هذه المعمارية أو إضافة اعتماديات ثقيلة.
 
 ---
 
@@ -119,8 +119,8 @@ zopair/Engine-/
 - يثبت engine_runner.yml إصداراً محدداً من أداة llama.cpp الرسمية من GitHub Releases (b12503) مع SHA-256 مثبت، ويعيد استخدام مجلد runtime عبر actions/cache.
 - يستخدم core/local_engine.py واجهة llama-cli مباشرة عند عدم توفر Python binding، مع CPU فقط وحدود الذاكرة والمهلة. هذا يمنع إدخال NumPy إلى اعتماديات Runtime.
 - **لم يُضف llama-cpp-python إلى requirements.txt:** الحزمة الرسمية تتطلب numpy ضمن اعتمادياتها الأساسية. مسار NumPy الثنائي الذي سبق تدقيقه يتضمن libquadmath بترخيص LGPL خارج قائمة تراخيص Runtime. فرض تثبيت الحزمة سيكسر سياسة التراخيص الحالية.
-- توفير GGUF يتم حصراً من GitHub Release asset بعد إدخال ENGINE_MODEL_RELEASE_URL وENGINE_MODEL_SHA256 كـ Repository Variables. يرفض scripts/provision_model.py أي مصدر ليس HTTPS GitHub Release، ويفحص SHA-256، ويحدد الحد الأقصى للحجم بـ700 MiB.
-- لا يوجد ملف Qwen GGUF رسمي مثبت كمرفق GitHub Release موثوق في مصادر المشروع التي تم تدقيقها؛ لذلك لا يُنزّل المحرك نموذجاً من Hugging Face أو مرآة مجهولة، ولا يدّعي Zero-Config inference قبل توفير ملف معتمد. عند غياب النموذج يمكن للمحرك استخدام بوابة خارجية سبق اعتمادها في ENGINE_PUBLIC_PROVIDERS، وإلا يفشل الاستدلال برسالة واضحة.
+- توفير GGUF يتم من GitHub Release داخلي `models-v1`. ينشئ `.github/workflows/provision_model.yml` الإصدار تلقائياً عند غيابه أو يدوياً، ويجلب Qwen2.5-0.5B-Instruct-GGUF من مستودع Qwen الرسمي عند مراجعة immutable commit، ويتحقق من بيانات Apache-2.0، وصيغة GGUF والحجم، ثم ينشر الملف وملف SHA-256. يرفض `scripts/provision_model.py` أي تنزيل نموذج ليس من HTTPS GitHub Release، ويطابق البصمة المنشورة، مع حد 700 MiB.
+- مصدر النموذج هو `Qwen/Qwen2.5-0.5B-Instruct-GGUF` الرسمي، وملف Q4_K_M حجمه المنشور نحو 491 MB ورخصته Apache-2.0. بعد نشره في `models-v1` يصبح رابط GitHub Release الداخلي هو الافتراضي؛ تُقرأ البصمة تلقائياً من ملف `.sha256` ما لم يحدد المشغل بصمة مخصصة. عند غياب النموذج وبوابة معتمدة في ENGINE_PUBLIC_PROVIDERS، يفشل الاستدلال برسالة واضحة.
 - tests/test_local_inference_integration.py اختبار حقيقي اختياري، و.github/workflows/local_inference_smoke.yml يشغله عند تمرير GitHub Release URL وSHA-256 لنموذج Apache-2.0. الاختبار لا يُعد ناجحاً لمجرد وجوده؛ يجب تشغيل الـ workflow ورؤية نجاحه على نموذج فعلي.
 
 ### 2) استمرارية الحالة دون Secret
@@ -143,5 +143,5 @@ zopair/Engine-/
 
 ### 5) حالة المرحلة الرابعة وحدود الادعاء
 - مكتمل في الفرع: Artifact backup/restore، self-evolution gated workflow، static control center، Pages deployment workflow، pinned llama.cpp CPU runtime، GitHub Release model provisioner، واختبار inference حقيقي اختياري.
-- غير مكتمل بعد: توفير ملف GGUF موثوق عبر GitHub Release مع SHA-256 وتشغيل local_inference_smoke.yml بنجاح. لم يُستبدل شرط GitHub-only بمصدر تنزيل خارجي لتحقيق اكتمال شكلي.
+- التحقق النهائي المعلق: اكتمال workflow توريد النموذج إلى `models-v1` ثم نجاح `local_inference_smoke.yml` دون skip. لا يُعلن الاستدلال المحلي مثبتاً قبل نجاح هذا التشغيل الفعلي.
 - CI المعتاد يشغّل اختبارات الوحدات؛ اختبار النموذج الحقيقي يتخطى نفسه عندما لا يتوفر ملف النموذج ومسار llama-cli. يجب تشغيل اختبار التكامل الصريح قبل إعلان الاستدلال المحلي مثبتاً إنتاجياً.
