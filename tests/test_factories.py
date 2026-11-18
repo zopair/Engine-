@@ -138,3 +138,19 @@ def test_workflow_factory_rejects_empty_and_oversized_definitions(tmp_path: Path
     steps = [WorkflowStep(f"step-{index}", lambda payload, state: None) for index in range(101)]
     with pytest.raises(ValueError, match="100 steps"):
         factory.create("too-large", steps)
+
+
+def test_agent_factory_executes_only_explicitly_granted_model_tool_calls():
+    class SequenceOrchestrator:
+        def __init__(self):
+            self.responses = [
+                '{"tool_calls":[{"name":"lookup","arguments":{"key":"alpha"}}]}',
+                "Resolved value is 42.",
+            ]
+        def complete(self, prompt):
+            return self.responses.pop(0)
+
+    factory = AgentFactory(orchestrator=SequenceOrchestrator())
+    factory.register_tool("lookup", lambda key: {"key": key, "value": 42})
+    agent = factory.create("researcher", "Use lookup when needed.", tools=("lookup",))
+    assert agent.run("Find alpha") == "Resolved value is 42."
