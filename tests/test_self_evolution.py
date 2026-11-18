@@ -31,3 +31,9 @@ def test_evolution_rejects_large_patches_and_too_many_files():
     patch = "".join(f"--- a/core/{i}.py\n+++ b/core/{i}.py\n" for i in range(9))
     with pytest.raises(EvolutionError, match="maximum 8"):
         validate_patch(patch)
+
+
+def test_evolution_requires_a_regression_test_in_the_patch():
+    patch = "--- a/core/example.py\n+++ b/core/example.py\n@@ -1 +1 @@\n-old\n+new\n"
+    with pytest.raises(EvolutionError, match="regression test"):
+        validate_patch(patch)
