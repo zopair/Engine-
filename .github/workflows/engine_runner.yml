@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 12
     env:
       ENGINE_MODEL_PATH: ~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+      ENGINE_MODEL_RELEASE_URL: ${{ vars.ENGINE_MODEL_RELEASE_URL }}
+      ENGINE_MODEL_SHA256: ${{ vars.ENGINE_MODEL_SHA256 }}
       ENGINE_THREADS: "2"
       ENGINE_MAX_CPU_THREADS: "2"
       ENGINE_MAX_MEMORY_MB: "12288"
@@ -48,6 +50,16 @@ jobs:
           key: engine-gguf-${{ runner.os }}-${{ hashFiles('models/*.sha256') }}
           restore-keys: |
             engine-gguf-${{ runner.os }}-
+      - name: Restore pinned CPU llama.cpp runtime
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/engine/llama.cpp
+          key: engine-llama-b12503-${{ runner.os }}
+      - name: Install pinned CPU llama.cpp runtime
+        run: python scripts/install_llama_runtime.py
+      - name: Provision configured GitHub Release model
+        if: env.ENGINE_MODEL_RELEASE_URL != ''
+        run: python scripts/provision_model.py
       - name: Find previous successful runner
         if: env.ENGINE_STATE_ENCRYPTION_KEY == ''
         id: previous
