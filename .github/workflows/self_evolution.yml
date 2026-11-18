@@ -50,24 +50,40 @@ jobs:
       - name: Restore encrypted state
         if: env.ENGINE_STATE_ENCRYPTION_KEY != ''
         run: python scripts/sync_state.py restore
+      - name: Check inference availability
+        id: inference
+        run: |
+          if [ -s "$ENGINE_MODEL_PATH" ] || [ -n "$ENGINE_PUBLIC_PROVIDERS" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No approved local model or external provider is configured; skipping evolution safely."
+          fi
       - name: Generate evidence-based proposal
+        if: steps.inference.outputs.ready == 'true'
         run: python evolution/self_evolution.py propose --patch /tmp/engine-evolution.patch
       - name: Create isolated branch and apply validated patch
+        if: steps.inference.outputs.ready == 'true'
         id: branch
         run: |
           branch=$(python evolution/self_evolution.py prepare --patch /tmp/engine-evolution.patch)
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
       - name: Install test dependencies
+        if: steps.inference.outputs.ready == 'true'
         run: |
           python -m venv .venv-dev
           .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt -r requirements-dev.txt
       - name: Compile all source
+        if: steps.inference.outputs.ready == 'true'
         run: .venv-dev/bin/python -m compileall -q cli.py core memory agents factories tools scripts evolution
       - name: Run full test suite
+        if: steps.inference.outputs.ready == 'true'
         run: .venv-dev/bin/python -m pytest -q
       - name: Enforce development license allowlist
+        if: steps.inference.outputs.ready == 'true'
         run: .venv-dev/bin/python scripts/check_licenses.py --scope dev
       - name: Open human-review PR only after all gates pass
+        if: steps.inference.outputs.ready == 'true'
         env:
           BRANCH: ${{ steps.branch.outputs.branch }}
         run: python evolution/self_evolution.py open-pr --branch "$BRANCH" --repository "$GITHUB_REPOSITORY"
