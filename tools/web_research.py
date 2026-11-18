@@ -48,17 +48,17 @@ class _MarkdownParser(HTMLParser):
         if self.skip:
             return
         if tag in {"h1", "h2", "h3"}:
-            self.parts.append("\\n" if self.parts else "")
+            self.parts.append("\n" if self.parts else "")
             self.pending = "#" * int(tag[1]) + " "
         elif tag in {"p", "div", "section", "article", "li", "br"}:
-            self.parts.append("\\n\\n")
+            self.parts.append("\n\n")
             if tag == "li":
                 self.parts.append("- ")
     def handle_endtag(self, tag):
         if tag in {"script", "style", "noscript", "svg", "nav", "footer"} and self.skip:
             self.skip -= 1
         elif not self.skip and tag in {"h1", "h2", "h3", "p", "div", "section", "article", "li"}:
-            self.parts.append("\\n\\n")
+            self.parts.append("\n\n")
     def handle_data(self, data):
         if not self.skip and data:
             if self.pending:
@@ -71,9 +71,9 @@ def html_to_markdown(source: str, max_chars: int = 20000) -> str:
     parser = _MarkdownParser()
     parser.feed(source[:max_chars * 4])
     text = html.unescape("".join(parser.parts))
-    text = re.sub(r"[ \\t]+", " ", text)
-    text = re.sub(r" *\\n *", "\\n", text)
-    text = re.sub(r"\\n{3,}", "\\n\\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()[:max_chars]
 
 
