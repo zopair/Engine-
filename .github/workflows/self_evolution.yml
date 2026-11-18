@@ -1,0 +1,71 @@
+name: ENGINE Self-Evolution
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: engine-self-evolution-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  propose-test-pr:
+    if: github.repository == 'zopair/Engine-'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ENGINE_DATABASE_PATH: ./data/engine.db
+      ENGINE_MODEL_PATH: ~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+      ENGINE_THREADS: "2"
+      ENGINE_MAX_CPU_THREADS: "2"
+      ENGINE_MAX_MEMORY_MB: "12288"
+      ENGINE_STATE_ENCRYPTION_KEY: ${{ secrets.ENGINE_STATE_ENCRYPTION_KEY }}
+      ENGINE_PUBLIC_PROVIDERS: ${{ vars.ENGINE_PUBLIC_PROVIDERS }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore last runner artifact when encryption is not configured
+        if: env.ENGINE_STATE_ENCRYPTION_KEY == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --workflow engine_runner.yml --status success --limit 10 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --name engine-state --dir ./artifacts || true
+          fi
+          python scripts/artifact_state.py restore --snapshot ./artifacts/engine-state.sqlite
+      - name: Restore encrypted state
+        if: env.ENGINE_STATE_ENCRYPTION_KEY != ''
+        run: python scripts/sync_state.py restore
+      - name: Generate evidence-based proposal
+        run: python evolution/self_evolution.py propose --patch /tmp/engine-evolution.patch
+      - name: Create isolated branch and apply validated patch
+        id: branch
+        run: |
+          branch=$(python evolution/self_evolution.py prepare --patch /tmp/engine-evolution.patch)
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Install test dependencies
+        run: |
+          python -m venv .venv-dev
+          .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt -r requirements-dev.txt
+      - name: Compile all source
+        run: .venv-dev/bin/python -m compileall -q cli.py core memory agents factories tools scripts evolution
+      - name: Run full test suite
+        run: .venv-dev/bin/python -m pytest -q
+      - name: Enforce development license allowlist
+        run: .venv-dev/bin/python scripts/check_licenses.py --scope dev
+      - name: Open human-review PR only after all gates pass
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: python evolution/self_evolution.py open-pr --branch "$BRANCH" --repository "$GITHUB_REPOSITORY"
