@@ -77,11 +77,19 @@ def html_to_markdown(source: str, max_chars: int = 20000) -> str:
     return text.strip()[:max_chars]
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        safe_url = normalize_url(urllib.parse.urljoin(req.full_url, newurl))
+        _assert_public_host(safe_url)
+        return super().redirect_request(req, fp, code, msg, headers, safe_url)
+
+
 def _fetch(url: str, timeout: float = 12.0, limit: int = 2_000_000) -> str:
     current = normalize_url(url)
     _assert_public_host(current)
     request = urllib.request.Request(current, headers={"User-Agent": "ENGINE-research/1.0", "Accept": "text/html"})
-    with urllib.request.urlopen(request, timeout=min(max(timeout, 2), 20)) as response:
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
+    with opener.open(request, timeout=min(max(timeout, 2), 20)) as response:
         final = normalize_url(response.geturl())
         _assert_public_host(final)
         if "text/html" not in response.headers.get("Content-Type", ""):
