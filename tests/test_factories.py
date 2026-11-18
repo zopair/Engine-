@@ -85,9 +85,12 @@ def test_workflow_rejects_duplicate_step_names(tmp_path: Path):
         )
 
 
-def test_agent_rejects_ungranted_tool_and_missing_provider(monkeypatch, tmp_path):
-    monkeypatch.setenv("ENGINE_DATABASE_PATH", str(tmp_path / "agent.db"))
-    factory = AgentFactory()
+def test_agent_rejects_ungranted_tool_and_missing_provider():
+    class NoProvider:
+        def complete(self, prompt):
+            from core.provider_orchestrator import ProviderError
+            raise ProviderError("all inference providers failed: no healthy providers are configured")
+    factory = AgentFactory(orchestrator=NoProvider())
     factory.register_tool("private", lambda: "secret")
     agent = factory.create("restricted", "No tools.", tools=())
     with pytest.raises(PermissionError, match="not granted"):
