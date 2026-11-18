@@ -54,6 +54,8 @@ def validate_patch(patch: str) -> list[str]:
         raise EvolutionError("patch does not modify an approved source or test directory")
     if len(unique) > 8:
         raise EvolutionError("patch changes too many files (maximum 8)")
+    if not any(path.startswith("tests/") for path in unique):
+        raise EvolutionError("every self-evolution proposal must include a regression test")
     return unique
 
 
