@@ -91,7 +91,7 @@ def test_agent_rejects_ungranted_tool_and_missing_executor():
     agent = factory.create("restricted", "No tools.", tools=())
     with pytest.raises(PermissionError, match="not granted"):
         agent.call_tool("private")
-    with pytest.raises(Exception, match="No execution provider"):
+    with pytest.raises(Exception, match="all inference providers failed"):
         agent.run("do work")
 
 
