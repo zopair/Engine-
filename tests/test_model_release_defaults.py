@@ -1,5 +1,5 @@
 from core.config import EngineConfig
-from scripts.provision_model import DEFAULT_MODEL_URL, parse_checksum_sidecar, ModelProvisionError
+from scripts.provision_model import DEFAULT_MODEL_URL, DEFAULT_MODEL_PATH, parse_checksum_sidecar, ModelProvisionError
 import pytest
 
 
@@ -7,7 +7,7 @@ def test_default_model_release_is_internal_and_checksum_is_discovered_from_relea
     settings = EngineConfig.from_env()
     assert settings.model_release_url == DEFAULT_MODEL_URL
     assert settings.model_release_url.endswith("/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf")
-    assert settings.model_path.lower().endswith("qwen2.5-0.5b-instruct-q4_k_m.gguf")
+    assert settings.model_path == DEFAULT_MODEL_PATH
     assert settings.model_sha256 == ""
 
 

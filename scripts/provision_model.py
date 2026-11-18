@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 DEFAULT_MODEL_URL = "https://github.com/zopair/Engine-/releases/download/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+DEFAULT_MODEL_PATH = "~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"
 MAX_MODEL_BYTES = 700 * 1024 * 1024
 ALLOWED_REDIRECT_HOSTS = {"github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
 
@@ -92,7 +93,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=os.getenv("ENGINE_MODEL_RELEASE_URL", DEFAULT_MODEL_URL))
     parser.add_argument("--sha256", default=os.getenv("ENGINE_MODEL_SHA256", ""))
-    parser.add_argument("--output", default=os.getenv("ENGINE_MODEL_PATH", "~/.cache/engine/models/model.gguf"))
+    parser.add_argument("--output", default=os.getenv("ENGINE_MODEL_PATH", DEFAULT_MODEL_PATH))
     args = parser.parse_args()
     expected_sha256 = args.sha256.strip() or fetch_release_checksum(args.url)
     print(f"Verified GGUF model installed at {download_model(args.url, expected_sha256, Path(args.output).expanduser())}")

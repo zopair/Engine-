@@ -22,7 +22,7 @@ jobs:
     env:
       ENGINE_DATABASE_PATH: ./data/engine.db
       ENGINE_MODEL_PATH: ~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
-      ENGINE_MODEL_RELEASE_URL: ${{ vars.ENGINE_MODEL_RELEASE_URL }}
+      ENGINE_MODEL_RELEASE_URL: ${{ vars.ENGINE_MODEL_RELEASE_URL || 'https://github.com/zopair/Engine-/releases/download/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf' }}
       ENGINE_MODEL_SHA256: ${{ vars.ENGINE_MODEL_SHA256 }}
       ENGINE_THREADS: "2"
       ENGINE_MAX_CPU_THREADS: "2"
@@ -47,7 +47,7 @@ jobs:
       - name: Install pinned CPU llama.cpp runtime
         run: python scripts/install_llama_runtime.py
       - name: Provision configured GitHub Release model
-        if: env.ENGINE_MODEL_RELEASE_URL != ''
+        if: success() && env.ENGINE_MODEL_RELEASE_URL != ''
         run: python scripts/provision_model.py
       - name: Restore last runner artifact when encryption is not configured
         if: env.ENGINE_STATE_ENCRYPTION_KEY == ''
