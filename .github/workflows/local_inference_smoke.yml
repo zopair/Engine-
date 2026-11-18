@@ -52,4 +52,4 @@ jobs:
           python -m venv .venv-dev
           .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt -r requirements-dev.txt
       - name: Execute real local inference integration test (no skip)
-        run: .venv-dev/bin/python -m pytest -q -rs tests/test_local_inference_integration.py
+        run: .venv-dev/bin/python -m pytest -q -rs
