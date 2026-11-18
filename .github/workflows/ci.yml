@@ -1,0 +1,83 @@
+name: ENGINE CI
+
+on:
+  push:
+    branches: [main, "phase-**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-license:
+    name: Tests and scoped license allowlists
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ENGINE_MODEL_PATH: ~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
+      ENGINE_THREADS: "2"
+      ENGINE_MAX_CPU_THREADS: "2"
+      ENGINE_MAX_MEMORY_MB: "12288"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Restore small GGUF model cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/engine/models
+          key: engine-models-${{ runner.os }}-${{ hashFiles('models/*.sha256') }}
+          restore-keys: |
+            engine-models-${{ runner.os }}-
+
+      - name: Verify production runtime licenses in isolation
+        run: |
+          python -m venv .venv-runtime
+          .venv-runtime/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt
+          .venv-runtime/bin/python scripts/check_licenses.py --scope runtime
+
+      - name: Install pinned development and test packages
+        run: |
+          python -m venv .venv-dev
+          .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements-dev.txt
+
+      - name: Compile source
+        run: .venv-dev/bin/python -m compileall -q cli.py core memory agents tools
+
+      - name: Run tests
+        run: .venv-dev/bin/python -m pytest -q
+
+      - name: Verify development license allowlist
+        run: .venv-dev/bin/python scripts/check_licenses.py --scope dev
+
+  dependency-review:
+    name: Dependency vulnerabilities and license policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: low
+          license-check: true
+          allow-licenses: MIT, Apache-2.0, BSD-3-Clause
+          allow-dependencies-licenses: pkg:pypi/pygments
+          fail-on-scopes: runtime, development
