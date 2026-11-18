@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   test-and-license:
-    name: Tests and scoped license allowlists
+    name: Tests, runtime/dev license allowlists
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     env:
       ENGINE_MODEL_PATH: ~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf
       ENGINE_THREADS: "2"
@@ -54,10 +54,10 @@ jobs:
       - name: Install pinned development and test packages
         run: |
           python -m venv .venv-dev
-          .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements-dev.txt
+          .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt -r requirements-dev.txt
 
       - name: Compile source
-        run: .venv-dev/bin/python -m compileall -q cli.py core memory agents tools
+        run: .venv-dev/bin/python -m compileall -q cli.py core memory agents factories tools scripts
 
       - name: Run tests
         run: .venv-dev/bin/python -m pytest -q

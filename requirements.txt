@@ -1,3 +1,4 @@
-# Core GitHub Actions runtime intentionally uses Python standard library only.
-# Optional model runtime is gated on a complete MIT/Apache-2.0/BSD-3-Clause
-# dependency and supply-chain audit before it is added to this file.
+# No runtime third-party package is admitted until its full binary and transitive
+# license inventory passes MIT / Apache-2.0 / BSD-3-Clause.
+# FAISS is currently gated: the tested NumPy wheel bundles LGPL libquadmath.
+# The default CPU vector index uses the Python standard library.
