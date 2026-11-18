@@ -1,6 +1,7 @@
 name: ENGINE Local Inference Smoke Test
 
 on:
+  # Keep the real-model gate coupled to every critical inference component.
   push:
     branches: [main]
     paths:
