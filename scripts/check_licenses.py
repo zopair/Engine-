@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import re
-import sys
 from importlib.metadata import distributions
 
-ALLOWED = {"MIT", "Apache-2.0", "BSD-3-Clause"}
-# These are bootstrap tools preinstalled by the GitHub Python toolchain, not project dependencies.
+RUNTIME_ALLOWED = {"MIT", "Apache-2.0", "BSD-3-Clause"}
+DEV_ALLOWED = RUNTIME_ALLOWED | {"BSD-2-Clause"}
+# These are bootstrap tools supplied by the isolated Python virtual environment.
 BOOTSTRAP_TOOLS = {"pip", "setuptools", "wheel"}
 
 
@@ -17,12 +18,16 @@ def _spdx_atom(value: str) -> str | None:
         return "MIT"
     if atom in {"apache-2.0", "apache 2.0", "apache software license"}:
         return "Apache-2.0"
-    if atom in {"bsd-3-clause", "bsd 3-clause", "bsd 3 clause", "bsd license"}:
+    if atom in {"bsd-3-clause", "bsd 3-clause", "bsd 3 clause"}:
         return "BSD-3-Clause"
+    if atom in {"bsd-2-clause", "bsd 2-clause", "bsd 2 clause"}:
+        return "BSD-2-Clause"
     return None
 
 
-def expression_is_approved(expression: str) -> bool:
+def expression_is_approved(
+    expression: str, allowed: set[str] | frozenset[str] = RUNTIME_ALLOWED
+) -> bool:
     """Accept an allowed SPDX choice; every AND-combined obligation must be allowed."""
     expression = re.sub(r"\s+", " ", (expression or "").strip())
     if not expression:
@@ -30,7 +35,7 @@ def expression_is_approved(expression: str) -> bool:
     alternatives = re.split(r"\s+OR\s+", expression, flags=re.IGNORECASE)
     for alternative in alternatives:
         obligations = re.split(r"\s+AND\s+", alternative, flags=re.IGNORECASE)
-        if obligations and all(_spdx_atom(item) in ALLOWED for item in obligations):
+        if obligations and all(_spdx_atom(item) in allowed for item in obligations):
             return True
     return False
 
@@ -52,6 +57,11 @@ def license_for(distribution) -> str:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--scope", choices=("runtime", "dev"), default="runtime")
+    args = parser.parse_args()
+    allowed = RUNTIME_ALLOWED if args.scope == "runtime" else DEV_ALLOWED
+
     rejected = []
     checked = 0
     for distribution in distributions():
@@ -60,15 +70,15 @@ def main() -> int:
             continue
         license_name = license_for(distribution)
         checked += 1
-        if not expression_is_approved(license_name):
+        if not expression_is_approved(license_name, allowed):
             rejected.append((name, license_name or "UNKNOWN"))
 
     if rejected:
-        print("Unapproved or unverified licenses:")
+        print(f"Unapproved or unverified {args.scope} licenses:")
         for name, license_name in sorted(rejected):
             print(f"- {name}: {license_name}")
         return 1
-    print(f"License allowlist passed for {checked} installed distributions.")
+    print(f"{args.scope.title()} license allowlist passed for {checked} installed distributions.")
     return 0
 
 
