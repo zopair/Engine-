@@ -44,9 +44,19 @@ class AgentFactory:
             self._executor = executor
         else:
             if orchestrator is None:
+                self._executor = self._build_lazy_executor()
+            else:
+                self._executor = self._build_executor(orchestrator)
+
+    @classmethod
+    def _build_lazy_executor(cls):
+        state = {}
+        def execute(**kwargs):
+            if "executor" not in state:
                 from core.provider_orchestrator import ProviderOrchestrator
-                orchestrator = ProviderOrchestrator()
-            self._executor = self._build_executor(orchestrator)
+                state["executor"] = cls._build_executor(ProviderOrchestrator())
+            return state["executor"](**kwargs)
+        return execute
 
     @staticmethod
     def _build_executor(orchestrator):
