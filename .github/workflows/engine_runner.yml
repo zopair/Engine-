@@ -92,11 +92,11 @@ jobs:
             python cli.py run "$TASK" --request-id "$REQUEST_ID" > /tmp/engine-result.txt
             cat /tmp/engine-result.txt
           fi
+      - name: Persist encrypted state
+        if: success() && env.ENGINE_STATE_ENCRYPTION_KEY != ''
+        run: python scripts/sync_state.py save
       - name: Comment and close completed task issue
         if: success() && steps.task.outputs.issue_number != ''
         env:
           ISSUE_NUMBER: ${{ steps.task.outputs.issue_number }}
         run: python scripts/complete_issue.py --issue "$ISSUE_NUMBER" --result-file /tmp/engine-result.txt
-      - name: Persist encrypted state
-        if: success() && env.ENGINE_STATE_ENCRYPTION_KEY != ''
-        run: python scripts/sync_state.py save
