@@ -29,10 +29,10 @@ def test_runtime_archive_rejects_symlink_escape():
 
 def test_runtime_archive_rejects_files_nested_under_symlink_parent():
     entries = [
-        member("lib", tarfile.SYMTYPE, "../outside"),
+        member("lib", tarfile.SYMTYPE, "actual-lib"),
         member("lib/llama-cli", tarfile.REGTYPE),
     ]
-    with pytest.raises(RuntimeError, match="escapes extraction root"):
+    with pytest.raises(RuntimeError, match="symlink parent"):
         validate_archive_members(entries)
 
 
