@@ -42,7 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run_id=$(gh run list --workflow engine_runner.yml --status success --limit 10 --json databaseId --jq '.[0].databaseId // empty')
+          run_id=$(gh run list --workflow engine_runner.yml --branch main --status success --limit 10 --json databaseId --jq '.[0].databaseId // empty')
           if [ -n "$run_id" ]; then
             gh run download "$run_id" --name engine-state --dir ./artifacts || true
           fi
