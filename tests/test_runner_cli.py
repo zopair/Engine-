@@ -11,7 +11,7 @@ def test_cli_run_uses_default_orchestrator(monkeypatch, capsys, tmp_path):
         def health_check(self): return {"healthy": True, "latency_ms": 0.1}
         def complete(self, prompt, max_tokens=None): return "real routed result"
     monkeypatch.setattr(
-        "core.provider_orchestrator.ProviderOrchestrator",
+        "cli.ProviderOrchestrator",
         lambda: ProviderOrchestrator(providers=[FakeProvider()]),
     )
     assert main(["run", "execute task"]) == 0
