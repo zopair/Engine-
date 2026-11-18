@@ -1,0 +1,71 @@
+name: Provision official Qwen GGUF model
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/provision_model.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: engine-models-v1
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Skip when models-v1 release already exists
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view models-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download official Apache-2.0 Qwen model at immutable revision
+        if: steps.release.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="$(mktemp)"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://huggingface.co/api/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF > "$metadata"
+          license="$(jq -r '.cardData.license // empty' "$metadata")"
+          revision="$(jq -r '.sha // empty' "$metadata")"
+          test "$license" = "apache-2.0"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          asset="qwen2.5-0.5b-instruct-q4_k_m.gguf"
+          curl --fail --location --retry 3 --retry-all-errors \
+            "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/$revision/$asset" \
+            --output "$asset"
+          bytes="$(stat -c '%s' "$asset")"
+          test "$bytes" -ge 450000000
+          test "$bytes" -le 550000000
+          test "$(head -c 4 "$asset")" = "GGUF"
+          sha256sum "$asset" > "$asset.sha256"
+          echo "revision=$revision" >> "$GITHUB_ENV"
+          echo "sha256=$(cut -d ' ' -f 1 "$asset.sha256")" >> "$GITHUB_ENV"
+      - name: Create draft release and upload model plus checksum
+        if: steps.release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create models-v1 qwen2.5-0.5b-instruct-q4_k_m.gguf qwen2.5-0.5b-instruct-q4_k_m.gguf.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+            --title "Approved local model assets v1" \
+            --notes "Official Qwen/Qwen2.5-0.5B-Instruct-GGUF Q4_K_M asset. Source revision: $revision. License metadata verified as Apache-2.0. SHA-256: $sha256. The checksum sidecar is published alongside the GGUF."
+          gh release edit models-v1 --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Verify published release assets
+        if: steps.release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view models-v1 --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,assets

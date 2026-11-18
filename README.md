@@ -1,7 +1,7 @@
 # ENGINE — 100% GitHub-Native Autonomous Intelligence Platform (`zopair/Engine-`)
 
 > **⚠️ تنبيه ملزم لوكلاء البرمجة والمطورين (Strict Architectural Contract):**
-> هذا المستند هو **المرجع الهندسي الوحيد المعتمد (Single Source of Truth)** للمشروع. يعمل هذا المحرك **بالكامل داخل بنية GitHub (GitHub Actions + GitHub API + GitHub Pages)** بدون أي استضافات خارجية (لا Hugging Face، لا Render، لا خوادم خارجية مدفوعة). يُمنع الخروج عن هذه المعمارية أو إضافة اعتماديات ثقيلة.
+> هذا المستند هو **المرجع الهندسي الوحيد المعتمد (Single Source of Truth)** للمشروع. يعمل التشغيل والتنفيذ **داخل بنية GitHub (GitHub Actions + GitHub API + GitHub Pages)** دون استضافة خارجية دائمة. يُسمح باستثناء توريد النموذج لمرة واحدة من مستودع Qwen الرسمي على Hugging Face، بعد التحقق من رخصة Apache-2.0 وتثبيت مراجعة المصدر، ثم يُعاد استضافته كـ GitHub Release داخلي؛ لا تُستخدم HF Spaces أو خوادم استدلال خارجية. يُمنع الخروج عن هذه المعمارية أو إضافة اعتماديات ثقيلة.
 
 ---
 
@@ -109,3 +109,39 @@ zopair/Engine-/
 - لا يوجد مزود استدلال خارجي تلقائي مضمون دون إعداد. إذا لم يوجد نموذج محلي صالح أو بوابة معتمدة في `ENGINE_PUBLIC_PROVIDERS`، يفشل طلب المهمة برسالة واضحة بدلاً من ادعاء إتمامه.
 - Actions بيئة مؤقتة وليست خدمة دائمة؛ الجدولة كل ست ساعات ليست ضمان تشغيل دائم أو تنفيذ فوري خارج حدود GitHub Actions.
 - لم تُضف اعتماديات Runtime جديدة؛ الأدوات أعلاه مبنية على Python Standard Library. تظل بوابات Dependency Review وRuntime/Development License Allowlist إلزامية قبل الدمج.
+
+
+---
+
+## 1.3 المرحلة الرابعة — Self-Evolution, Artifact State & Control Center
+
+### 1) استدلال CPU محلي
+- يثبت engine_runner.yml إصداراً محدداً من أداة llama.cpp الرسمية من GitHub Releases (b12503) مع SHA-256 مثبت، ويعيد استخدام مجلد runtime عبر actions/cache.
+- يستخدم core/local_engine.py واجهة llama-cli مباشرة عند عدم توفر Python binding، مع CPU فقط وحدود الذاكرة والمهلة. هذا يمنع إدخال NumPy إلى اعتماديات Runtime.
+- **لم يُضف llama-cpp-python إلى requirements.txt:** الحزمة الرسمية تتطلب numpy ضمن اعتمادياتها الأساسية. مسار NumPy الثنائي الذي سبق تدقيقه يتضمن libquadmath بترخيص LGPL خارج قائمة تراخيص Runtime. فرض تثبيت الحزمة سيكسر سياسة التراخيص الحالية.
+- توفير GGUF يتم من GitHub Release داخلي `models-v1`. ينشئ `.github/workflows/provision_model.yml` الإصدار تلقائياً عند غيابه أو يدوياً، ويجلب Qwen2.5-0.5B-Instruct-GGUF من مستودع Qwen الرسمي عند مراجعة immutable commit، ويتحقق من بيانات Apache-2.0، وصيغة GGUF والحجم، ثم ينشر الملف وملف SHA-256. يرفض `scripts/provision_model.py` أي تنزيل نموذج ليس من HTTPS GitHub Release، ويطابق البصمة المنشورة، مع حد 700 MiB.
+- مصدر النموذج هو `Qwen/Qwen2.5-0.5B-Instruct-GGUF` الرسمي، وملف Q4_K_M حجمه المنشور نحو 491 MB ورخصته Apache-2.0. بعد نشره في `models-v1` يصبح رابط GitHub Release الداخلي هو الافتراضي؛ تُقرأ البصمة تلقائياً من ملف `.sha256` ما لم يحدد المشغل بصمة مخصصة. عند غياب النموذج وبوابة معتمدة في ENGINE_PUBLIC_PROVIDERS، يفشل الاستدلال برسالة واضحة.
+- tests/test_local_inference_integration.py اختبار حقيقي اختياري، و.github/workflows/local_inference_smoke.yml يشغله عند تمرير GitHub Release URL وSHA-256 لنموذج Apache-2.0. الاختبار لا يُعد ناجحاً لمجرد وجوده؛ يجب تشغيل الـ workflow ورؤية نجاحه على نموذج فعلي.
+
+### 2) استمرارية الحالة دون Secret
+- عند وجود ENGINE_STATE_ENCRYPTION_KEY يظل مسار التشفير إلى فرع engine-state هو المسار الأول.
+- عند غياب المفتاح، ينشئ scripts/artifact_state.py نسخة SQLite متسقة باستخدام SQLite backup API، ويتحقق من integrity_check وبنية جداول ENGINE، ثم يرفعها باسم engine-state عبر GitHub Actions Artifacts.
+- التشغيل التالي يبحث عن آخر تشغيل ناجح لـengine_runner.yml ويحاول استعادة Artifact السابق قبل بدء المهمة.
+- الاحتفاظ بالـ Artifact مضبوط على 90 يوماً. هذا المسار لا يوفر تشفيراً تطبيقياً؛ الوصول يخضع لصلاحيات مستودع GitHub، ولذلك لا تستخدمه للبيانات السرية أو الحساسة. استمرارية البيانات الحساسة تتطلب مفتاح التشفير وسر GitHub.
+
+### 3) التطور الذاتي المحكوم
+- evolution/self_evolution.py يقرأ مقاييس المزودين وسجل الإخفاقات من SQLite، ويطلب اقتراحاً محدوداً من مزود استدلال متاح.
+- تُرفض التغييرات التي تخرج عن core/, tools/, factories/, memory/, tests/، أو تتجاوز 8 ملفات/80 KB، أو لا تتضمن اختبار Regression.
+- لا يسمح بتعديل workflows أو الاعتماديات أو سياسة التراخيص أو الواجهة أو ملفات الدستور عبر التطور الذاتي.
+- .github/workflows/self_evolution.yml ينشئ فرع auto/fix-* معزولاً، ويشغّل Compile وpytest وفحص تراخيص Development. لا يفتح PR إلا بعد نجاحها كلها. كل PR يحتاج مراجعة بشرية ودمجاً يدوياً.
+- عند عدم توفر نموذج محلي أو بوابة معتمدة، لا يستطيع الوكيل توليد اقتراح؛ لن ينشئ PR شكلياً.
+
+### 4) واجهة التحكم الساكنة
+- docs/index.html واجهة Vanilla HTML/CSS/JS بلا خادم أو اعتماديات، تعرض Issues المفتوحة والمغلقة ذات بادئة [TASK]، وحالة آخر تشغيل، ومدته، ومعدل نجاح آخر تشغيلات Actions.
+- إرسال المهمة يفتح GitHub Issue جديداً بعنوان [TASK] ...؛ لا يخزن Token أو Secret في المتصفح. إرسال Issue يتطلب تسجيل دخول المستخدم إلى GitHub.
+- .github/workflows/pages.yml ينشر مجلد docs/ باستخدام GitHub Pages. يجب اختيار Settings → Pages → Build and deployment → Source: GitHub Actions مرة واحدة في إعدادات المستودع حتى يُسمح بالنشر.
+
+### 5) حالة المرحلة الرابعة وحدود الادعاء
+- مكتمل في الفرع: Artifact backup/restore، self-evolution gated workflow، static control center، Pages deployment workflow، pinned llama.cpp CPU runtime، GitHub Release model provisioner، واختبار inference حقيقي اختياري.
+- التحقق النهائي المعلق: اكتمال workflow توريد النموذج إلى `models-v1` ثم نجاح `local_inference_smoke.yml` دون skip. لا يُعلن الاستدلال المحلي مثبتاً قبل نجاح هذا التشغيل الفعلي.
+- CI المعتاد يشغّل اختبارات الوحدات؛ اختبار النموذج الحقيقي يتخطى نفسه عندما لا يتوفر ملف النموذج ومسار llama-cli. يجب تشغيل اختبار التكامل الصريح قبل إعلان الاستدلال المحلي مثبتاً إنتاجياً.

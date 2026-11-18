@@ -57,7 +57,7 @@ jobs:
           .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt -r requirements-dev.txt
 
       - name: Compile source
-        run: .venv-dev/bin/python -m compileall -q cli.py core memory agents factories tools scripts
+        run: .venv-dev/bin/python -m compileall -q cli.py core memory agents factories tools scripts evolution
 
       - name: Run tests
         run: .venv-dev/bin/python -m pytest -q

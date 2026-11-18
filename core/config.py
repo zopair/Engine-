@@ -23,6 +23,8 @@ class EngineConfig:
     temperature: float
     max_memory_mb: int
     max_cpu_threads: int
+    model_release_url: str = "https://github.com/zopair/Engine-/releases/download/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    model_sha256: str = ""
     database_path: str = "./data/engine.db"
     huey_database_path: str = "./data/huey.db"
     groq_api_key: str = ""
@@ -58,7 +60,9 @@ class EngineConfig:
         except ValueError:
             crawl_timeout, request_timeout, similarity, embedding_timeout = 15.0, 30.0, 0.92, 30.0
         return cls(
-            model_path=os.getenv("ENGINE_MODEL_PATH", "").strip(),
+            model_path=os.getenv("ENGINE_MODEL_PATH", "~/.cache/engine/models/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf").strip(),
+            model_release_url=os.getenv("ENGINE_MODEL_RELEASE_URL", "https://github.com/zopair/Engine-/releases/download/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf").strip(),
+            model_sha256=os.getenv("ENGINE_MODEL_SHA256", "").strip(),
             model_context=_int_env("ENGINE_CONTEXT", 2048),
             model_threads=min(_int_env("ENGINE_THREADS", min(2, cpu_count)), cpu_count),
             model_batch=_int_env("ENGINE_BATCH", 128),
