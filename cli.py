@@ -28,16 +28,17 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     apply_thread_limits()
     if args.command == "maintenance":
-        database = Database(config.database_path)
+        database = Database(__import__("os").getenv("ENGINE_DATABASE_PATH", config.database_path))
         database.initialize()
         with database.connect() as connection:
             connection.execute("DELETE FROM provider_requests WHERE created_at < ?", (time.time() - 30 * 86400,))
             connection.execute("PRAGMA optimize")
-        print(json.dumps({"status": "maintenance_complete", "database": config.database_path}))
+        print(json.dumps({"status": "maintenance_complete", "database": str(database.path)}))
         return 0
     if args.command == "doctor":
         orchestrator = ProviderOrchestrator()
-        providers = [{"name": provider.name, **orchestrator._health_for(provider).__dict__}
+        providers = [{"name": provider.name, "healthy": orchestrator._health_for(provider).healthy,
+                      "latency_ms": orchestrator._health_for(provider).latency_ms}
                      for provider in orchestrator.providers]
         report = {"status": "ready" if any(item["healthy"] for item in providers) else "degraded",
                   "providers": providers, "gpu_layers": 0, "resources": as_dict()}
