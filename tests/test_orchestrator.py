@@ -58,3 +58,16 @@ def test_orchestrator_skips_unhealthy_provider(tmp_path: Path):
     )
     assert orchestrator.complete("prompt") == "good"
     assert unhealthy.calls == 0
+
+
+def test_orchestrator_rejects_reused_request_id_for_different_prompt(tmp_path: Path):
+    import pytest
+    from core.provider_orchestrator import ProviderError
+    provider = Provider("dedupe", response="answer")
+    orchestrator = ProviderOrchestrator(
+        database=Database(str(tmp_path / "mismatch.db")), providers=[provider]
+    )
+    orchestrator.complete("first", request_id="same-key")
+    with pytest.raises(ProviderError, match="different prompt"):
+        orchestrator.complete("second", request_id="same-key")
+    assert provider.calls == 1
