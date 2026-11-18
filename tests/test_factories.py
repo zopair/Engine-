@@ -85,7 +85,8 @@ def test_workflow_rejects_duplicate_step_names(tmp_path: Path):
         )
 
 
-def test_agent_rejects_ungranted_tool_and_missing_executor():
+def test_agent_rejects_ungranted_tool_and_missing_provider(monkeypatch, tmp_path):
+    monkeypatch.setenv("ENGINE_DATABASE_PATH", str(tmp_path / "agent.db"))
     factory = AgentFactory()
     factory.register_tool("private", lambda: "secret")
     agent = factory.create("restricted", "No tools.", tools=())
