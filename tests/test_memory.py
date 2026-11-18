@@ -65,5 +65,5 @@ def test_state_codec_round_trips_and_rejects_tampering():
 
 
 def test_state_codec_requires_a_32_byte_key():
-    with pytest.raises(StateStoreError, match="32-byte"):
+    with pytest.raises(StateStoreError, match="32 bytes"):
         EncryptedStateCodec(key=b"short")
