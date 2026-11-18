@@ -4,21 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       model_release_url:
-        description: HTTPS GitHub Release asset URL for an Apache-2.0 GGUF model
-        required: true
+        description: HTTPS GitHub Release asset URL (defaults to the approved internal Qwen model)
+        required: false
+        default: https://github.com/zopair/Engine-/releases/download/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf
         type: string
       model_sha256:
-        description: Pinned SHA-256 digest of the GGUF file
-        required: true
+        description: Optional SHA-256 override; otherwise read the published .sha256 sidecar
+        required: false
         type: string
+  workflow_run:
+    workflows: ["Provision official Qwen GGUF model"]
+    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
   real-local-inference:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       ENGINE_MODEL_PATH: ~/.cache/engine/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
       ENGINE_INTEGRATION_MODEL_PATH: ~/.cache/engine/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
@@ -32,15 +37,15 @@ jobs:
           python-version: "3.11"
       - name: Install pinned CPU llama.cpp runtime
         run: python scripts/install_llama_runtime.py
-      - name: Provision checksum-pinned Apache-2.0 model
+      - name: Provision checksum-pinned Apache-2.0 model from internal Release
         env:
-          MODEL_URL: ${{ inputs.model_release_url }}
-          MODEL_SHA256: ${{ inputs.model_sha256 }}
+          MODEL_URL: ${{ inputs.model_release_url || 'https://github.com/zopair/Engine-/releases/download/models-v1/qwen2.5-0.5b-instruct-q4_k_m.gguf' }}
+          MODEL_SHA256: ${{ inputs.model_sha256 || '' }}
         run: |
           python scripts/provision_model.py --url "$MODEL_URL" --sha256 "$MODEL_SHA256" --output "$ENGINE_MODEL_PATH"
       - name: Install only approved test dependencies
         run: |
           python -m venv .venv-dev
           .venv-dev/bin/python -m pip install --disable-pip-version-check --no-deps -r requirements.txt -r requirements-dev.txt
-      - name: Execute real local inference integration test
-        run: .venv-dev/bin/python -m pytest -q tests/test_local_inference_integration.py
+      - name: Execute real local inference integration test (no skip)
+        run: .venv-dev/bin/python -m pytest -q -rs tests/test_local_inference_integration.py
