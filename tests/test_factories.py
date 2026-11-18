@@ -83,3 +83,58 @@ def test_workflow_rejects_duplicate_step_names(tmp_path: Path):
             [WorkflowStep("same", lambda payload, state: None),
              WorkflowStep("same", lambda payload, state: None)],
         )
+
+
+def test_agent_rejects_ungranted_tool_and_missing_executor():
+    factory = AgentFactory()
+    factory.register_tool("private", lambda: "secret")
+    agent = factory.create("restricted", "No tools.", tools=())
+    with pytest.raises(PermissionError, match="not granted"):
+        agent.call_tool("private")
+    with pytest.raises(Exception, match="No execution provider"):
+        agent.run("do work")
+
+
+def test_agent_factory_rejects_duplicate_registration():
+    factory = AgentFactory()
+    factory.register_tool("lookup", lambda: 1)
+    with pytest.raises(ValueError, match="already registered"):
+        factory.register_tool("lookup", lambda: 2)
+
+
+def test_workflow_completed_run_is_idempotent(tmp_path: Path):
+    calls = {"count": 0}
+
+    def step(payload, state):
+        calls["count"] += 1
+        return {"done": payload["value"]}
+
+    workflow = WorkflowFactory(Database(str(tmp_path / "idempotent.db"))).create(
+        "idempotent", [WorkflowStep("finish", step)]
+    )
+    first = workflow.run({"value": "ok"}, run_id="same-run")
+    second = workflow.resume("same-run")
+
+    assert first == second
+    assert calls["count"] == 1
+
+
+def test_workflow_rejects_non_json_state_before_creating_run(tmp_path: Path):
+    workflow = WorkflowFactory(Database(str(tmp_path / "json.db"))).create(
+        "json-only", [WorkflowStep("finish", lambda payload, state: None)]
+    )
+    with pytest.raises(ValueError, match="JSON serializable"):
+        workflow.run({"not_json": object()}, run_id="invalid-json")
+    with workflow.database.connect() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM workflow_runs WHERE run_id='invalid-json'"
+        ).fetchone() is None
+
+
+def test_workflow_factory_rejects_empty_and_oversized_definitions(tmp_path: Path):
+    factory = WorkflowFactory(Database(str(tmp_path / "limits.db")))
+    with pytest.raises(ValueError, match="at least one step"):
+        factory.create("empty", [])
+    steps = [WorkflowStep(f"step-{index}", lambda payload, state: None) for index in range(101)]
+    with pytest.raises(ValueError, match="100 steps"):
+        factory.create("too-large", steps)
