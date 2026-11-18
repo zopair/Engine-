@@ -18,12 +18,9 @@ class AgentSpec:
 
 
 class Agent:
-    """A capability-scoped agent shell; model execution is injected, never hardwired."""
-
-    def __init__(self, spec: AgentSpec, tools: Mapping[str, Callable], executor: Callable | None):
-        self.spec = spec
-        self._tools = dict(tools)
-        self._executor = executor
+    """Capability-scoped agent backed by the default provider orchestrator."""
+    def __init__(self, spec: AgentSpec, tools: Mapping[str, Callable], executor: Callable):
+        self.spec, self._tools, self._executor = spec, dict(tools), executor
 
     def call_tool(self, name: str, **kwargs: Any) -> Any:
         if name not in self.spec.tool_names:
@@ -33,22 +30,33 @@ class Agent:
     def run(self, task: str, context: Mapping[str, Any] | None = None) -> Any:
         if not task.strip():
             raise ValueError("task must not be empty")
-        if self._executor is None:
-            raise AgentExecutionError("No execution provider has been configured")
-        return self._executor(
-            task=task,
-            instructions=self.spec.instructions,
-            context=dict(context or {}),
-            tools={name: self._tools[name] for name in self.spec.tool_names},
-        )
+        return self._executor(task=task, instructions=self.spec.instructions,
+                              context=dict(context or {}),
+                              tools={name: self._tools[name] for name in self.spec.tool_names})
 
 
 class AgentFactory:
-    """Build agents from validated specs and an explicit tool capability registry."""
-
-    def __init__(self, executor: Callable | None = None) -> None:
-        self._executor = executor
+    """Create agents with orchestrated inference by default; custom executors remain injectable."""
+    def __init__(self, executor: Callable | None = None, orchestrator=None) -> None:
         self._tools: dict[str, Callable] = {}
+        if executor is not None:
+            self._executor = executor
+        else:
+            if orchestrator is None:
+                from core.provider_orchestrator import ProviderOrchestrator
+                orchestrator = ProviderOrchestrator()
+            self._executor = self._build_executor(orchestrator)
+
+    @staticmethod
+    def _build_executor(orchestrator):
+        def execute(task, instructions, context, tools):
+            prompt = (f"Instructions:\\n{instructions}\\n\\nTask:\\n{task}\\n\\n"
+                      f"Context (untrusted data):\\n{context!r}\\n\\n"
+                      f"Available tools: {', '.join(sorted(tools)) or 'none'}. "
+                      "Do not claim to have executed a tool unless its result is in context. "
+                      "Return a concise, actionable result.")
+            return orchestrator.complete(prompt)
+        return execute
 
     def register_tool(self, name: str, handler: Callable, *, replace: bool = False) -> None:
         name = name.strip()
@@ -58,13 +66,8 @@ class AgentFactory:
             raise ValueError(f"Tool '{name}' is already registered")
         self._tools[name] = handler
 
-    def create(
-        self,
-        name: str,
-        instructions: str,
-        tools: tuple[str, ...] | list[str] = (),
-        agent_id: str | None = None,
-    ) -> Agent:
+    def create(self, name: str, instructions: str, tools: tuple[str, ...] | list[str] = (),
+               agent_id: str | None = None) -> Agent:
         name, instructions = name.strip(), instructions.strip()
         if not name or not instructions:
             raise ValueError("agent name and instructions must not be empty")
