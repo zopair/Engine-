@@ -1,4 +1,7 @@
 import sqlite3
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -34,3 +37,24 @@ def test_artifact_restore_rejects_non_engine_sqlite(tmp_path):
 
 def test_artifact_restore_missing_file_is_noop(tmp_path):
     assert restore_snapshot(str(tmp_path / "missing.sqlite"), str(tmp_path / "target.db")) is False
+
+
+def test_artifact_cli_runs_from_outside_repository_root(tmp_path):
+    repository_root = Path(__file__).resolve().parents[1]
+    script = repository_root / "scripts" / "artifact_state.py"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "restore",
+            "--snapshot",
+            str(tmp_path / "missing.sqlite"),
+            "--database",
+            str(tmp_path / "restored.db"),
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "No previous artifact snapshot found." in completed.stdout
